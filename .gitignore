@@ -21,9 +21,10 @@ build/
 *.swp
 *.swo
 
-# Output
-output/*.pptx
-output/*.py
+# Input/Output (폴더는 유지, 내용만 제외)
+input/*
+!input/.gitkeep
+output/*
 !output/.gitkeep
 
 # Logs
