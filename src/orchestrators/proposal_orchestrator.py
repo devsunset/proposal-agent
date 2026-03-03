@@ -6,7 +6,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ..parsers import get_parser_for_path
 from ..agents.rfp_analyzer import RFPAnalyzer
@@ -41,6 +41,11 @@ class ProposalOrchestrator:
                 self.api_key = settings.gemini_api_key or ""
         self.rfp_analyzer = RFPAnalyzer(api_key=self.api_key)
         self.content_generator = ContentGenerator(api_key=self.api_key)
+        self._run_diagnostics: List[Dict[str, Any]] = []  # 고도화: Phase별 로깅·진단
+
+    def get_run_diagnostics(self) -> List[Dict[str, Any]]:
+        """마지막 execute()의 Phase별 진단 정보(소요시간, 슬라이드 수, JSON 성공 여부) 반환."""
+        return list(self._run_diagnostics)
 
     async def execute(
         self,
@@ -123,6 +128,7 @@ class ProposalOrchestrator:
                     "message": f"제안서 콘텐츠 생성 중 ({_llm_label} - Impact-8)...",
                 })
 
+            run_diagnostics: List[Dict[str, Any]] = []
             proposal_content = await self.content_generator.execute(
                 input_data={
                     "rfp_analysis": rfp_analysis,
@@ -138,7 +144,9 @@ class ProposalOrchestrator:
                     "sub_total": p["total"],
                     "message": p["message"],
                 }) if progress_callback else None,
+                diagnostics_out=run_diagnostics,
             )
+            self._run_diagnostics = run_diagnostics
 
             if progress_callback:
                 progress_callback({

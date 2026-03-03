@@ -22,7 +22,7 @@ def test_txt_parser_parse_returns_expected_keys(tmp_path):
 def test_txt_parser_extract_text_utf8(tmp_path):
     """UTF-8 텍스트 추출"""
     f = tmp_path / "utf8.txt"
-    content = "입찰 제안서 RFP 분석"
+    content = "제안서 RFP 분석"
     f.write_text(content, encoding="utf-8")
     parser = TXTParser()
     assert parser.extract_text(f) == content

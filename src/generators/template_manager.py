@@ -380,6 +380,17 @@ class TemplateManager:
             size_name, self.design_system["fonts"]["sizes"]["body"]
         )
 
+    def get_font_size_for_text(self, text: str, base_size_name: str = "body") -> Pt:
+        """고도화: 텍스트 길이에 따라 폰트 크기 자동 조절 (긴 텍스트는 작게)."""
+        if not (text or "").strip():
+            return self.get_font_size(base_size_name)
+        n = len(str(text).strip())
+        if n > 800:
+            return self.get_font_size("caption")
+        if n > 400:
+            return self.get_font_size("small")
+        return self.get_font_size(base_size_name)
+
     def get_font_name(self, font_type: str = "body") -> str:
         """폰트 이름 반환"""
         return self.design_system["fonts"].get(font_type, "맑은 고딕")

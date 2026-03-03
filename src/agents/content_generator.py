@@ -6,6 +6,7 @@ v3.6: Win Theme 전달 체인, Action Title 강제, C-E-I 설득 로직, KPIWith
 """
 
 import json
+import time
 from typing import Any, Callable, Dict, List, Optional
 
 from config.settings import get_settings
@@ -83,6 +84,7 @@ class ContentGenerator(BaseAgent):
         self,
         input_data: Dict[str, Any],
         progress_callback: Optional[Callable] = None,
+        diagnostics_out: Optional[List[Dict[str, Any]]] = None,
     ) -> ProposalContent:
         """
         RFP 분석 결과를 바탕으로 제안서 콘텐츠 생성 (Impact-8 Framework)
@@ -97,6 +99,7 @@ class ContentGenerator(BaseAgent):
                 "proposal_type": str (optional)
             }
             progress_callback: 진행 상황 콜백
+            diagnostics_out: Phase별 소요시간·슬라이드 수·JSON 성공 여부를 담을 리스트 (고도화: 로깅·진단)
 
         Returns:
             ProposalContent: 생성된 제안서 콘텐츠
@@ -104,6 +107,7 @@ class ContentGenerator(BaseAgent):
         phases: List[PhaseContent] = []
         teaser: Optional[TeaserContent] = None
         win_themes: List[Dict[str, Any]] = []  # v3.6: Win Theme 전달 체인
+        diagnostics: List[Dict[str, Any]] = []
 
         rfp_analysis: RFPAnalysis = input_data["rfp_analysis"]
 
@@ -123,7 +127,7 @@ class ContentGenerator(BaseAgent):
                 "total": 8,
                 "message": f"Phase 0: {PHASE_TITLES[0]} 생성 중...",
             })
-
+        t0 = time.perf_counter()
         teaser = await self._generate_teaser(
             rfp_analysis=rfp_analysis,
             company_data=input_data.get("company_data", {}),
@@ -132,6 +136,13 @@ class ContentGenerator(BaseAgent):
             proposal_type=proposal_type,
         )
         logger.info("Phase 0: HOOK 생성 완료")
+        diagnostics.append({
+            "phase": 0,
+            "phase_title": PHASE_TITLES.get(0, "HOOK"),
+            "slides_count": len(teaser.slides) if teaser and teaser.slides else 0,
+            "elapsed_sec": round(time.perf_counter() - t0, 2),
+            "json_ok": True,
+        })
 
         # Phase 1: SUMMARY 생성 → Win Theme 3개 확정
         if progress_callback:
@@ -140,7 +151,7 @@ class ContentGenerator(BaseAgent):
                 "total": 8,
                 "message": f"Phase 1: {PHASE_TITLES[1]} 생성 중...",
             })
-
+        t0 = time.perf_counter()
         phase1_content, phase1_raw = await self._generate_phase_with_raw(
             phase_num=1,
             rfp_analysis=rfp_analysis,
@@ -152,6 +163,13 @@ class ContentGenerator(BaseAgent):
         )
         phases.append(phase1_content)
         logger.info("Phase 1: SUMMARY 생성 완료")
+        diagnostics.append({
+            "phase": 1,
+            "phase_title": PHASE_TITLES.get(1, "SUMMARY"),
+            "slides_count": len(phase1_content.slides),
+            "elapsed_sec": round(time.perf_counter() - t0, 2),
+            "json_ok": bool(phase1_raw and phase1_raw.get("slides")),
+        })
 
         # v3.6: Phase 1 응답에서 Win Theme 추출
         win_themes = self._extract_win_themes(phase1_raw)
@@ -173,6 +191,7 @@ class ContentGenerator(BaseAgent):
                     "message": f"Phase {phase_num}: {PHASE_TITLES[phase_num]} 생성 중...",
                 })
             logger.info("Phase {}: {} 생성 중...", phase_num, PHASE_TITLES[phase_num])
+            t0 = time.perf_counter()
             phase_content = await self._generate_phase(
                 phase_num=phase_num,
                 rfp_analysis=rfp_analysis,
@@ -185,6 +204,13 @@ class ContentGenerator(BaseAgent):
             )
             phases.append(phase_content)
             logger.info("Phase {}: {} 생성 완료", phase_num, PHASE_TITLES[phase_num])
+            diagnostics.append({
+                "phase": phase_num,
+                "phase_title": PHASE_TITLES.get(phase_num, ""),
+                "slides_count": len(phase_content.slides),
+                "elapsed_sec": round(time.perf_counter() - t0, 2),
+                "json_ok": len(phase_content.slides) > 0,
+            })
 
         # 핵심 메시지 추출 (Executive Summary/Teaser에서)
         one_sentence_pitch, key_differentiators, slogan = self._extract_key_messages(
@@ -193,6 +219,10 @@ class ContentGenerator(BaseAgent):
 
         # v3.6: Win Theme을 WinTheme 모델로 변환
         win_theme_models = self._build_win_theme_models(win_themes)
+
+        if diagnostics_out is not None:
+            diagnostics_out.clear()
+            diagnostics_out.extend(diagnostics)
 
         return ProposalContent(
             project_name=input_data["project_name"],
@@ -334,12 +364,28 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         slides = self._parse_slides(slides_data.get("slides", []))
 
         # JSON 실패 또는 슬라이드 없음 시 1회 재생성
+        retry_count = 0
         if not slides_data or not slides_data.get("slides") or len(slides) == 0:
             logger.warning("Phase %s: JSON 추출 실패 또는 slides 없음, 1회 재생성 시도", phase_num)
             response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
             slides_data = self._extract_json(response)
             slides_data = self._normalize_json_keys(slides_data or {}, PHASE_KEY_ALIASES)
             slides = self._parse_slides(slides_data.get("slides", []))
+            retry_count = 1
+
+        # Self-Refinement: min_slides 미달이면 2차 재생성 1회 (고도화 방안)
+        if 0 < len(slides) < min_slides and retry_count < 2:
+            logger.warning(
+                "Phase %s: 슬라이드 %s장 < min_slides %s, 2차 재생성 시도",
+                phase_num, len(slides), min_slides,
+            )
+            response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
+            slides_data = self._extract_json(response)
+            slides_data = self._normalize_json_keys(slides_data or {}, PHASE_KEY_ALIASES)
+            new_slides = self._parse_slides(slides_data.get("slides", []))
+            if len(new_slides) >= len(slides):
+                slides = new_slides
+            retry_count = 2
 
         if not slides:
             slides = [SlideContent(slide_type=SlideType.CONTENT, title=PHASE_TITLES[phase_num])]

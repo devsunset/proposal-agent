@@ -162,7 +162,7 @@ python main.py generate --help
 $ python main.py generate input/rfp.pdf -n "디지털 마케팅" -c "A공사"
 
   ┌─────────────────────────────────────────┐
-  │  입찰 제안서 자동 생성 에이전트 v3.0     │
+  │  제안서 자동 생성 에이전트 v3.0     │
   │  Impact-8 Framework                     │
   └─────────────────────────────────────────┘
 

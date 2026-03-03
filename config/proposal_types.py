@@ -1,11 +1,14 @@
 """
 프로젝트 유형별 제안서 구조 설정
 
-각 프로젝트 유형에 맞는 Phase 구성, 권장 페이지 수, 특화 콘텐츠 정의
+각 프로젝트 유형에 맞는 Phase 구성, 권장 페이지 수, 특화 콘텐츠 정의.
+고도화: config/phase_profiles.json 이 있으면 해당 유형 설정을 외부에서 로드(선택).
 """
 
+import json
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 from enum import Enum
 
 
@@ -547,8 +550,68 @@ PROPOSAL_TYPE_CONFIGS: Dict[ProposalType, ProposalTypeConfig] = {
 }
 
 
+def _phase_profiles_path() -> Path:
+    """phase_profiles.json 경로 (config 디렉터리 기준)."""
+    return Path(__file__).resolve().parent / "phase_profiles.json"
+
+
+def _load_phase_profiles() -> Optional[Dict[str, Any]]:
+    """고도화: phase_profiles.json 로드. 없거나 실패 시 None."""
+    path = _phase_profiles_path()
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _config_from_profile(type_value: str, profile: Dict[str, Any]) -> ProposalTypeConfig:
+    """JSON 프로파일 한 유형 → ProposalTypeConfig 변환. 프로파일에 없는 Phase는 기본 설정 유지."""
+    try:
+        base_config = PROPOSAL_TYPE_CONFIGS.get(ProposalType(type_value), GENERAL_CONFIG)
+    except (ValueError, KeyError):
+        base_config = GENERAL_CONFIG
+    phases: Dict[int, PhaseConfig] = dict(base_config.phases)
+    phases_raw = profile.get("phases") or {}
+    for k, v in phases_raw.items():
+        try:
+            num = int(k)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(v, dict):
+            continue
+        existing = base_config.phases.get(num)
+        phases[num] = PhaseConfig(
+            title=str(v.get("title", getattr(existing, "title", ""))),
+            subtitle=str(v.get("subtitle", getattr(existing, "subtitle", ""))),
+            weight=float(v.get("weight", 0.1)),
+            min_slides=int(v.get("min_slides", 3)),
+            max_slides=int(v.get("max_slides", 10)),
+            required=bool(v.get("required", True)),
+            special_focus=v.get("special_focus") if isinstance(v.get("special_focus"), list) else (getattr(existing, "special_focus", None) if existing else None),
+        )
+    tr = profile.get("total_pages_range")
+    if isinstance(tr, (list, tuple)) and len(tr) >= 2:
+        total_pages_range = (int(tr[0]), int(tr[1]))
+    else:
+        total_pages_range = base_config.total_pages_range
+    return ProposalTypeConfig(
+        type_name=str(profile.get("type_name", base_config.type_name)),
+        description=str(profile.get("description", base_config.description)),
+        total_pages_range=total_pages_range,
+        phases=phases,
+        special_features=profile.get("special_features") if isinstance(profile.get("special_features"), list) else base_config.special_features,
+        recommended_style=str(profile.get("recommended_style", base_config.recommended_style)),
+    )
+
+
 def get_config(proposal_type: ProposalType) -> ProposalTypeConfig:
-    """프로젝트 유형에 맞는 설정 반환"""
+    """프로젝트 유형에 맞는 설정 반환. phase_profiles.json 있으면 해당 유형은 외부 설정 우선."""
+    type_value = proposal_type.value
+    profiles = _load_phase_profiles()
+    if profiles and type_value in profiles and isinstance(profiles[type_value], dict):
+        return _config_from_profile(type_value, profiles[type_value])
     return PROPOSAL_TYPE_CONFIGS.get(proposal_type, GENERAL_CONFIG)
 
 

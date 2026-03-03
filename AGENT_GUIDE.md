@@ -1,10 +1,10 @@
-# 입찰 제안서 자동 생성 에이전트 (Impact-8 + pptx_generator + TemplateManager)
+# 제안서 자동 생성 에이전트 (Impact-8 + pptx_generator + TemplateManager)
 
 > **LLM 설정**: 본 가이드의 콘텐츠 생성·분석 역할은 **.env의 `LLM_PROVIDER`** 설정에 따라 동적으로 적용됩니다.  
 > `LLM_PROVIDER=claude` | `gemini` | `groq` 중 하나를 선택하면, 해당 프로바이더(Claude / Gemini / Groq)가 RFP 분석 및 Phase 0~7 콘텐츠 생성을 수행합니다.
 
 ## 프로젝트 개요
-RFP(제안요청서) 문서를 입력받아 PPTX 형식의 입찰 제안서를 자동 생성하는 Python 에이전트 시스템.
+RFP(제안요청서) 문서를 입력받아 PPTX 형식의 제안서를 자동 생성하는 Python 에이전트 시스템.
 
 **현재 구현**: 문서 파싱(`get_parser_for_path` → PDF/DOCX/TXT/PPTX), RFP 분석·콘텐츠 생성(**설정된 LLM**: Claude/Gemini/Groq, `.env`의 `LLM_PROVIDER`로 선택), PPTX 렌더링(`TemplateManager` + `pptx_generator` + `chart_generator` + `diagram_generator`).
 

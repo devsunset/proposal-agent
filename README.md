@@ -1,6 +1,6 @@
-# Proposal Agent — AI 입찰 제안서 자동 생성 에이전트
+# Proposal Agent — AI 제안서 자동 생성 에이전트
 
-RFP(제안요청서) PDF/DOCX/TXT/PPTX를 입력하면 **Impact-8 구조의 PPTX 입찰 제안서**를 자동 생성하는 AI 에이전트 시스템
+RFP(제안요청서) PDF/DOCX/TXT/PPTX를 입력하면 **Impact-8 구조의 PPTX 제안서**를 자동 생성하는 AI 에이전트 시스템
 
 ## 핵심 특징
 

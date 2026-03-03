@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-입찰 제안서 자동 생성 에이전트 (v3.0 - Impact-8 Framework)
+제안서 자동 생성 에이전트 (v3.0 - Impact-8 Framework)
 
 RFP 문서를 입력받아 PPTX 제안서를 자동 생성합니다.
 실제 수주 성공 제안서 분석을 기반으로 개선된 구조 적용.
@@ -36,9 +36,18 @@ from src.schemas.proposal_schema import PHASE_TITLES
 
 setup_logger()  # LOG_LEVEL 환경 변수 사용 (기본 INFO)
 
+# 고도화: proposal_type별 기본 템플릿 (미지정 시 -T 없으면 빈 값으로 기본 디자인 사용)
+# 예: {"it_system": "guide_template"} 로 지정 시 it_system 유형은 템플릿 미지정이어도 해당 템플릿 사용
+DEFAULT_TEMPLATE_BY_PROPOSAL_TYPE: dict = {}
+
+
+def _default_template_for_proposal_type(proposal_type_value: str) -> str:
+    """제안서 유형에 따른 기본 템플릿명. 없으면 ''(기본 디자인)."""
+    return DEFAULT_TEMPLATE_BY_PROPOSAL_TYPE.get(proposal_type_value, "")
+
 app = typer.Typer(
     name="proposal-agent",
-    help="입찰 제안서 자동 생성 에이전트 (v3.0 - Impact-8 Framework)",
+    help="제안서 자동 생성 에이전트 (v3.0 - Impact-8 Framework)",
     add_completion=False,
 )
 console = Console()
@@ -99,7 +108,7 @@ def generate(
     ),
 ):
     """
-    RFP 문서로부터 입찰 제안서(PPTX) 자동 생성 (Impact-8 Framework)
+    RFP 문서로부터 제안서(PPTX) 자동 생성 (Impact-8 Framework)
 
     예시:
         python main.py generate input/rfp.pdf -n "[프로젝트명]" -c "[발주처명]" -t marketing_pr
@@ -141,7 +150,7 @@ def generate(
     _llm_label = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(_p, _p)
     console.print(
         Panel(
-            "[bold cyan]입찰 제안서 자동 생성 에이전트[/bold cyan]\n"
+            "[bold cyan]제안서 자동 생성 에이전트[/bold cyan]\n"
             "[bold]v3.0 - Impact-8 Framework[/bold]\n\n"
             f"[dim]LLM: {_llm_label} (콘텐츠 생성) | [회사명]: Modern 스타일 PPTX[/dim]",
             title="Proposal Agent",
@@ -278,6 +287,19 @@ async def _generate_async_impl(
     summary = proposal_orchestrator.get_proposal_summary(content)
     _print_content_summary(summary)
 
+    # 고도화: Phase별 진단(소요시간·슬라이드 수·JSON 성공) 출력 및 저장
+    diagnostics = proposal_orchestrator.get_run_diagnostics()
+    if diagnostics:
+        _print_run_diagnostics(diagnostics)
+        try:
+            import json as _json
+            _ts_diag = datetime.now().strftime("%Y%m%d%H%M%S")
+            _diag_path = output_dir / f"run_diagnostics_{_ts_diag}.json"
+            _diag_path.write_text(_json.dumps(diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
+            console.print(f"[dim]진단 저장: {_diag_path}[/dim]")
+        except Exception:
+            pass
+
     # 최종 프로젝트명 확정 (보안: 허용 문자·길이 제한)
     final_project_name = content.project_name or "제안서"
     safe_base = safe_filename(final_project_name)
@@ -316,10 +338,11 @@ async def _generate_async_impl(
             output_dir, final_project_name, suffix=f"_{_ts}", extension=".pptx"
         )
 
+        template_used = template if template is not None else _default_template_for_proposal_type(content.proposal_type.value)
         pptx_orchestrator.execute(
             content=content,
             output_path=output_path,
-            template_name=template,
+            template_name=template_used,
             progress_callback=update_progress,
         )
 
@@ -338,7 +361,7 @@ async def _generate_async_impl(
             f"[bold]발주처:[/bold] {content.client_name}\n"
             f"[bold]유형:[/bold] {get_type_display_name(content.proposal_type.value)}\n"
             f"[bold]슬라이드 수:[/bold] {total_slides}장\n"
-            f"[bold]디자인 스타일:[/bold] {template if template else '기본(템플릿 미사용)'}",
+            f"[bold]디자인 스타일:[/bold] {template_used if template_used else '기본(템플릿 미사용)'}",
             title="Complete",
             border_style="green",
         )
@@ -435,6 +458,28 @@ def _print_content_summary(summary: dict):
         console.print(f"\n[bold]슬로건:[/bold] {summary['slogan']}")
     if summary.get("one_sentence_pitch"):
         console.print(f"[bold]핵심 제안:[/bold] {summary['one_sentence_pitch']}")
+
+
+def _print_run_diagnostics(diagnostics: list):
+    """Phase별 진단(소요시간·슬라이드 수·JSON 성공) 테이블 출력 (고도화: 로깅·진단)."""
+    if not diagnostics:
+        return
+    console.print("[bold]Phase별 진단:[/bold]")
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Phase", style="dim")
+    table.add_column("제목", style="dim")
+    table.add_column("슬라이드", justify="right")
+    table.add_column("소요(초)", justify="right")
+    table.add_column("JSON", justify="center")
+    for d in diagnostics:
+        table.add_row(
+            f"Phase {d.get('phase', '')}",
+            str(d.get("phase_title", ""))[:20],
+            str(d.get("slides_count", 0)),
+            str(d.get("elapsed_sec", "")),
+            "✓" if d.get("json_ok") else "✗",
+        )
+    console.print(table)
 
 
 @app.command()

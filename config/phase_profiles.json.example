@@ -1,0 +1,39 @@
+{
+  "_comment": "phase_profiles.json으로 복사 후 사용. 있으면 해당 유형 설정을 코드 기본값 대신 사용.",
+  "it_system": {
+    "type_name": "IT/시스템",
+    "description": "시스템 구축, 소프트웨어 개발",
+    "total_pages_range": [60, 100],
+    "special_features": ["시스템 아키텍처", "WBS", "산출물 목록"],
+    "recommended_style": "modern",
+    "phases": {
+      "0": {
+        "title": "HOOK",
+        "subtitle": "오프닝",
+        "weight": 0.03,
+        "min_slides": 2,
+        "max_slides": 4,
+        "required": true,
+        "special_focus": ["디지털 전환 비전"]
+      },
+      "1": {
+        "title": "SUMMARY",
+        "subtitle": "Executive Summary",
+        "weight": 0.08,
+        "min_slides": 4,
+        "max_slides": 6,
+        "required": true,
+        "special_focus": ["기술적 차별점", "성능 KPI"]
+      },
+      "4": {
+        "title": "ACTION PLAN",
+        "subtitle": "구축 계획",
+        "weight": 0.35,
+        "min_slides": 20,
+        "max_slides": 35,
+        "required": true,
+        "special_focus": ["WBS", "Phase별 상세 계획", "산출물 목록"]
+      }
+    }
+  }
+}

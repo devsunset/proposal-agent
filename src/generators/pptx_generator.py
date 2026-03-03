@@ -203,7 +203,7 @@ class PPTXGenerator:
 
                     p.text = bullet.text
                     p.level = bullet.level
-                    p.font.size = self.template_manager.get_font_size("body")
+                    p.font.size = self.template_manager.get_font_size_for_text(bullet.text, "body")
                     p.font.name = self.template_manager.get_font_name("body")
                     p.font.bold = bullet.emphasis
 
@@ -483,12 +483,12 @@ class PPTXGenerator:
         p.font.bold = True
         p.font.color.rgb = self.template_manager.get_color("secondary")
 
-        # 불릿 포인트
+        # 불릿 포인트 (긴 텍스트는 폰트 자동 축소)
         for bullet in bullets:
             p = tf.add_paragraph()
             p.text = bullet.text
             p.level = bullet.level
-            p.font.size = self.template_manager.get_font_size("body")
+            p.font.size = self.template_manager.get_font_size_for_text(bullet.text, "body")
             p.font.name = self.template_manager.get_font_name("body")
             p.font.bold = bullet.emphasis
 
