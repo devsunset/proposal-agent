@@ -232,14 +232,13 @@ async def _generate_async_impl(
 ):
     """제안서 생성 실제 로직"""
 
-    STEP_SEP = "-------------"
-
     # Step 1: 콘텐츠 생성 (설정된 LLM)
     _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
         get_settings().llm_provider, "LLM"
     )
-    console.print(STEP_SEP)
+    console.print(LOG_SEPARATOR)
     console.print(f"[bold cyan]Step 1: 콘텐츠 생성 ({_llm} - Impact-8)[/bold cyan]")
+    console.print(LOG_SEPARATOR)
 
     proposal_orchestrator = ProposalOrchestrator(api_key=api_key)
 
@@ -281,8 +280,9 @@ async def _generate_async_impl(
         console.print(f"[dim]JSON 저장: {json_path}[/dim]")
 
     # Step 2: PPTX 생성 ([회사명])
-    console.print(STEP_SEP)
+    console.print(LOG_SEPARATOR)
     console.print("[bold cyan]Step 2: PPTX 생성 (Modern 스타일)[/bold cyan]")
+    console.print(LOG_SEPARATOR)
 
     pptx_orchestrator = PPTXOrchestrator()
 
