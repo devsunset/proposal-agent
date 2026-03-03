@@ -242,7 +242,7 @@ async def _generate_async_impl(
         Panel(
             f"[bold]{_llm}[/bold] - Impact-8",
             title="[bold]Step 1: 콘텐츠 생성[/bold]",
-            border_style="cyan",
+            border_style="green",
         )
     )
 
