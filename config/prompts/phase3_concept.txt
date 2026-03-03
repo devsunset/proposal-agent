@@ -108,9 +108,10 @@
 □ Win Theme이 전략 프레임워크에 반영되어 있는가?
 □ Action Title이 인사이트 기반인가?
 
-## 응답 형식
-반드시 유효한 JSON 형식으로 응답해주세요.
-competitor_comparison, channel_strategy 필드를 적극 활용하세요.
+## 응답 형식 (필수 준수)
+- **마크다운(##, ###, 목차 등)을 출력하지 마세요.** 응답은 오직 JSON 하나만 출력합니다.
+- 반드시 ```json 코드 블록 하나만 출력하세요. 블록 앞뒤에 설명·제목·목차를 붙이지 마세요.
+- competitor_comparison, channel_strategy 필드를 적극 활용하세요.
 
 ## ★ 제목 작성 규칙 (Action Title)
 모든 title 필드에 Action Title을 사용하세요.

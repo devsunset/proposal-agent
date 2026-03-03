@@ -96,10 +96,10 @@ HOOK의 마지막 부분(비전/방향성 암시)에서 이후 전개될 3대 Wi
 □ Win Theme이 암시되어 있는가?
 □ Action Title이 인사이트 기반인가? (Topic Title 사용 금지)
 
-## 응답 형식
-반드시 유효한 JSON 형식으로 응답해주세요.
-slide_type: "teaser" 또는 "key_message"를 적극 활용하세요.
-visual_style, layout_hint 필드로 디자인 의도를 전달하세요.
+## 응답 형식 (필수 준수)
+- **마크다운(##, ###, 목차 등)을 출력하지 마세요.** 응답은 오직 JSON 하나만 출력합니다.
+- 반드시 ```json 코드 블록 하나만 출력하세요. 블록 앞뒤에 설명·제목·목차를 붙이지 마세요.
+- slide_type: "teaser" 또는 "key_message"를 적극 활용하세요. visual_style, layout_hint 필드로 디자인 의도를 전달하세요.
 
 ## ★ 제목 작성 규칙 (Action Title)
 모든 title 필드에 Action Title을 사용하세요.

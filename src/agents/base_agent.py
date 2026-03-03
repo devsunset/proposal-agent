@@ -82,6 +82,7 @@ class BaseAgent(ABC):
         system_prompt: str,
         user_message: str,
         max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
     ) -> str:
         """
         LLM API 호출 (Claude / Gemini / Groq)
@@ -90,23 +91,27 @@ class BaseAgent(ABC):
             system_prompt: 시스템 프롬프트
             user_message: 사용자 메시지
             max_tokens: 최대 출력 토큰 수 (None이면 .env LLM_MAX_TOKENS 사용)
+            temperature: 생성 다양성 (None이면 .env LLM_TEMPERATURE, JSON 준수 위해 0.3~0.5 권장)
 
         Returns:
             모델 응답 텍스트
         """
         if max_tokens is None:
             max_tokens = get_settings().llm_max_tokens_default
+        if temperature is None:
+            temperature = get_settings().llm_temperature
         if self._use_claude:
-            return self._call_claude(system_prompt, user_message, max_tokens)
+            return self._call_claude(system_prompt, user_message, max_tokens, temperature)
         if self._use_groq:
-            return self._call_groq(system_prompt, user_message, max_tokens)
-        return self._call_gemini(system_prompt, user_message, max_tokens)
+            return self._call_groq(system_prompt, user_message, max_tokens, temperature)
+        return self._call_gemini(system_prompt, user_message, max_tokens, temperature)
 
     def _call_claude(
         self,
         system_prompt: str,
         user_message: str,
         max_tokens: int,
+        temperature: float = 0.4,
     ) -> str:
         """Claude (Anthropic) API 호출 (재시도·로깅 적용)"""
         settings = get_settings()
@@ -125,6 +130,7 @@ class BaseAgent(ABC):
                 message = self._anthropic_client.messages.create(
                     model=self._anthropic_model,
                     max_tokens=max_tokens,
+                    temperature=temperature,
                     system=system_prompt,
                     messages=[{"role": "user", "content": user_message}],
                 )
@@ -171,6 +177,7 @@ class BaseAgent(ABC):
         system_prompt: str,
         user_message: str,
         max_tokens: int,
+        temperature: float = 0.4,
     ) -> str:
         """Groq API 호출 (413/429 대응: 입력 길이 제한·재시도·로깅)"""
         settings = get_settings()
@@ -197,6 +204,7 @@ class BaseAgent(ABC):
                         {"role": "user", "content": user_message},
                     ],
                     max_tokens=max_tokens,
+                    temperature=temperature,
                 )
                 result = (response.choices[0].message.content or "").strip()
                 if not result:
@@ -239,6 +247,7 @@ class BaseAgent(ABC):
         system_prompt: str,
         user_message: str,
         max_tokens: int,
+        temperature: Optional[float] = 0.4,
     ) -> str:
         """Gemini API 호출 (설정 기반 재시도·로깅)"""
         settings = get_settings()
@@ -253,13 +262,16 @@ class BaseAgent(ABC):
                 len(user_message),
             )
             try:
+                config_kw = dict(
+                    system_instruction=system_prompt,
+                    max_output_tokens=max_tokens,
+                )
+                if temperature is not None and hasattr(types.GenerateContentConfig, "temperature"):
+                    config_kw["temperature"] = temperature
                 response = self.client.models.generate_content(
                     model=self.model,
                     contents=user_message,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        max_output_tokens=max_tokens,
-                    ),
+                    config=types.GenerateContentConfig(**config_kw),
                 )
                 if response.text is None:
                     raise ValueError("Gemini 응답 텍스트가 비어 있습니다.")
@@ -382,6 +394,7 @@ class BaseAgent(ABC):
         for anchor in (
             '"project_name"', '"client_name"', '"project_overview"', '"project_type"',
             '"win_themes"', '"slides"', '"agenda"', '"kpis"',
+            '"bullets"', '"table"', '"timeline"', '"slide_type"', '"headers"', '"rows"',
         ):
             idx = text.find(anchor)
             if idx == -1:

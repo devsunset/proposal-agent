@@ -301,25 +301,54 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         weight: float,
         win_themes: Optional[List[Dict[str, Any]]] = None,
     ) -> tuple:
-        """Phase 콘텐츠 생성 + 원본 JSON 반환 (Win Theme 추출용)"""
+        """Phase 콘텐츠 생성 + 원본 JSON 반환 (Win Theme 추출용). JSON 실패 시 1회 재생성."""
+        # content_guidelines를 Phase system 앞에 붙여 품질·형식 준수 유도
+        guidelines = self._load_prompt("content_guidelines")
         system_prompt = self._load_prompt(self.PHASE_PROMPTS[phase_num])
         if not system_prompt:
             system_prompt = self._get_phase_system_prompt(phase_num)
+        if (guidelines or "").strip():
+            system_prompt = (guidelines or "").strip() + "\n\n---\n\n" + system_prompt
 
         user_message = self._build_phase_user_message(
             phase_num, rfp_analysis, company_data,
             project_name, client_name, proposal_type, weight, win_themes
         )
 
-        # Phase 4(ACTION PLAN)는 분량이 많아 상한만 더 여유 있게 (설정값 또는 16384)
+        type_config = get_config(ConfigProposalType(proposal_type.value))
+        phase_config = type_config.phases.get(phase_num)
+        min_slides = phase_config.min_slides if phase_config else 3
+
+        # Phase별 토큰 상한: Phase 4는 16384, Phase 2·3·5·6·7은 12288 이상으로 상세 응답 유도
         default_tokens = get_settings().llm_max_tokens_default
-        max_tokens = max(default_tokens, 16384) if phase_num == 4 else default_tokens
+        if phase_num == 4:
+            max_tokens = max(default_tokens, 16384)
+        elif phase_num in (2, 3, 5, 6, 7):
+            max_tokens = max(default_tokens, 12288)
+        else:
+            max_tokens = default_tokens
+
         response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
         slides_data = self._extract_json(response)
         slides_data = self._normalize_json_keys(slides_data, PHASE_KEY_ALIASES)
         slides = self._parse_slides(slides_data.get("slides", []))
+
+        # JSON 실패 또는 슬라이드 없음 시 1회 재생성
+        if not slides_data or not slides_data.get("slides") or len(slides) == 0:
+            logger.warning("Phase %s: JSON 추출 실패 또는 slides 없음, 1회 재생성 시도", phase_num)
+            response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
+            slides_data = self._extract_json(response)
+            slides_data = self._normalize_json_keys(slides_data or {}, PHASE_KEY_ALIASES)
+            slides = self._parse_slides(slides_data.get("slides", []))
+
         if not slides:
             slides = [SlideContent(slide_type=SlideType.CONTENT, title=PHASE_TITLES[phase_num])]
+
+        if len(slides) < min_slides:
+            logger.warning(
+                "Phase %s (%s): min_slides=%s but generated %s slides. Consider increasing LLM_MAX_TOKENS or checking prompt.",
+                phase_num, PHASE_TITLES.get(phase_num, ""), min_slides, len(slides),
+            )
 
         phase_content = PhaseContent(
             phase_number=phase_num,
@@ -408,6 +437,31 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 → 이 Phase의 콘텐츠가 위 Win Theme과 연결되도록 작성하세요.
 """
 
+        # RFP 요약 블록 (품질 개선: LLM이 핵심을 놓치지 않도록 상단에 요약 제공)
+        reqs = getattr(rfp_analysis, "key_requirements", []) or getattr(rfp_analysis, "functional_requirements", [])
+        req_lines = []
+        for r in (reqs[:5] if isinstance(reqs, list) else []):
+            text = r.get("requirement", str(r)) if isinstance(r, dict) else getattr(r, "requirement", str(r))
+            req_lines.append(f"  - {text}")
+        eval_items = []
+        eval_strategy = getattr(rfp_analysis, "evaluation_strategy", None) or {}
+        if isinstance(eval_strategy, dict) and eval_strategy.get("high_weight_items"):
+            for item in eval_strategy["high_weight_items"][:5]:
+                eval_items.append(f"  - 배점 {item.get('weight', '?')}%: {item.get('item', item)}")
+        if not eval_items and getattr(rfp_analysis, "evaluation_criteria", None):
+            for c in (rfp_analysis.evaluation_criteria or [])[:5]:
+                w = c.get("weight", "") if isinstance(c, dict) else getattr(c, "weight", "")
+                it = c.get("item", c) if isinstance(c, dict) else getattr(c, "item", c)
+                eval_items.append(f"  - {w}%: {it}")
+        rfp_summary = f"""
+## RFP 요약 (작성 시 반드시 반영)
+- 프로젝트 개요: {getattr(rfp_analysis, 'project_overview', '') or ''}
+- 핵심 요구사항 (상위 5개):
+{chr(10).join(req_lines) if req_lines else '  (없음)'}
+- 고배점 평가 항목:
+{chr(10).join(eval_items) if eval_items else '  (없음)'}
+"""
+
         # KPI 스키마 (v3.6: calculation_basis 추가)
         kpi_schema = '''"kpis": [
                 {{"metric": "지표명", "target": "목표값", "baseline": "현재값", "improvement": "개선폭", "calculation_basis": "산출 근거 (어떻게 이 목표를 도출했는지)", "data_source": "데이터 출처"}}
@@ -418,8 +472,9 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 발주처: {client_name}
 제안서 유형: {proposal_type.value}
 Phase 비중: {weight * 100:.0f}%
+{rfp_summary}
 
-## RFP 분석 결과
+## RFP 분석 결과 (상세)
 {json.dumps(rfp_analysis.model_dump(), ensure_ascii=False, indent=2)[:10000]}
 
 ## 회사 정보
@@ -427,6 +482,7 @@ Phase 비중: {weight * 100:.0f}%
 {pain_point_section}{eval_strategy_section}{win_theme_section}
 ## 요청사항
 Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성해주세요.
+- **최소 {min_slides}장 이상** 슬라이드를 생성해야 하며, 1~2장만 내는 응답은 사용하지 않습니다.
 - 슬라이드 수: {min_slides}~{max_slides}장
 - 목적: {self.PHASE_SUBTITLES[phase_num]}
 {f'- 특별 강조 요소: {", ".join(special_focus)}' if special_focus else ''}

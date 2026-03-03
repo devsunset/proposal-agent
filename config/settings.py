@@ -42,6 +42,8 @@ class Settings(BaseModel):
     # LLM 공통: 재시도·토큰·호출 간 대기 (429/일시 오류 대응)
     # 응답 최대 토큰. 클 수수록 더 긴·상세한 응답 가능 (4096~16384 권장, 모델 한도 내)
     llm_max_tokens_default: int = int(os.getenv("LLM_MAX_TOKENS", "8192") or "8192")
+    # JSON/형식 준수 유도 (0.2~0.7 권장, 낮을수록 형식 준수)
+    llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.4") or "0.4")
     llm_retry_count: int = int(os.getenv("LLM_RETRY_COUNT", "3") or "3")
     llm_retry_base_delay_seconds: float = float(os.getenv("LLM_RETRY_BASE_DELAY", "5") or "5")
     # API 호출 간 대기(초). Gemini/Groq 공통. 429 방지용 (0=대기 없음, 무료 한도일 때 5~10 권장)
@@ -66,6 +68,13 @@ class Settings(BaseModel):
     def validate_retry_count(cls, v: int) -> int:
         if v < 1 or v > 10:
             raise ValueError("LLM_RETRY_COUNT must be between 1 and 10")
+        return v
+
+    @field_validator("llm_temperature")
+    @classmethod
+    def validate_temperature(cls, v: float) -> float:
+        if v < 0 or v > 2:
+            raise ValueError("LLM_TEMPERATURE must be between 0 and 2")
         return v
 
     # Paths
