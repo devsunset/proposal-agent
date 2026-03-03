@@ -5,7 +5,6 @@
 v3.6: Win Theme 전달 체인, Action Title 강제, C-E-I 설득 로직, KPIWithBasis
 """
 
-import asyncio
 import json
 from typing import Any, Callable, Dict, List, Optional
 
@@ -151,15 +150,16 @@ class ContentGenerator(BaseAgent):
                 win_themes = win_theme_candidates
                 logger.info(f"RFP Win Theme 후보 {len(win_themes)}개 사용 (폴백)")
 
-        # Phase 2~7 병렬 생성 (Win Theme 전달, API 한도 고려해 동시 실행)
-        if progress_callback:
-            progress_callback({
-                "step": 2,
-                "total": 8,
-                "message": "Phase 2~7 병렬 생성 중...",
-            })
-        phase_tasks = [
-            self._generate_phase(
+        # Phase 2~7 순차 생성 (단계별 로그, Win Theme 전달)
+        for phase_num in range(2, 8):
+            if progress_callback:
+                progress_callback({
+                    "step": 1 + phase_num,
+                    "total": 8,
+                    "message": f"Phase {phase_num}: {PHASE_TITLES[phase_num]} 생성 중...",
+                })
+            logger.info("Phase %s: %s 생성 중...", phase_num, PHASE_TITLES[phase_num])
+            phase_content = await self._generate_phase(
                 phase_num=phase_num,
                 rfp_analysis=rfp_analysis,
                 company_data=input_data.get("company_data", {}),
@@ -169,13 +169,8 @@ class ContentGenerator(BaseAgent):
                 weight=weights.get(phase_num, 0.1),
                 win_themes=win_themes,
             )
-            for phase_num in range(2, 8)
-        ]
-        phase_results = await asyncio.gather(*phase_tasks)
-        for phase_content in phase_results:
             phases.append(phase_content)
-        for phase_num in range(2, 8):
-            logger.info(f"Phase {phase_num}: {PHASE_TITLES[phase_num]} 생성 완료")
+            logger.info("Phase %s: %s 생성 완료", phase_num, PHASE_TITLES[phase_num])
 
         # 핵심 메시지 추출 (Executive Summary/Teaser에서)
         one_sentence_pitch, key_differentiators, slogan = self._extract_key_messages(
@@ -730,13 +725,43 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
         ]
 
     def _extract_win_themes(self, phase1_raw: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Phase 1 응답에서 Win Theme 추출 (v3.6)"""
-        win_themes = phase1_raw.get("win_themes", [])
-        if win_themes and isinstance(win_themes, list):
+        """Phase 1 응답에서 Win Theme 추출 (v3.6). 여러 키/형식 폴백."""
+        # 1) 최상위 win_themes
+        win_themes = phase1_raw.get("win_themes") or phase1_raw.get("winThemes")
+        if win_themes and isinstance(win_themes, list) and len(win_themes) > 0:
             return win_themes
 
-        # 폴백: slides에서 Win Theme 힌트 추출 시도
-        logger.warning("Phase 1 응답에서 win_themes 배열을 찾지 못함")
+        # 2) slides 내 첫 슬라이드나 summary 슬라이드에서 themes 추출
+        slides = phase1_raw.get("slides", [])
+        if isinstance(slides, list):
+            for slide in slides[:3]:
+                if not isinstance(slide, dict):
+                    continue
+                for key in ("win_themes", "winThemes", "themes", "key_themes"):
+                    val = slide.get(key)
+                    if val and isinstance(val, list) and len(val) > 0:
+                        return val
+                # 슬라이드 제목이 Win Theme 관련이면 bullets를 theme 후보로
+                title = (slide.get("title") or "").lower()
+                if "win" in title or "theme" in title or "핵심" in title:
+                    bullets = slide.get("bullets", [])
+                    if bullets and isinstance(bullets, list):
+                        themes = []
+                        for b in bullets[:3]:
+                            if isinstance(b, dict) and b.get("text"):
+                                themes.append({"name": b["text"][:50], "description": b.get("text", "")})
+                            elif isinstance(b, str):
+                                themes.append({"name": b[:50], "description": b})
+                        if themes:
+                            return themes
+
+        # 3) summary_win_themes 등 변형 키
+        for key in ("summary_win_themes", "key_win_themes", "themes"):
+            val = phase1_raw.get(key)
+            if val and isinstance(val, list) and len(val) > 0:
+                return val
+
+        logger.debug("Phase 1 응답에서 win_themes 배열을 찾지 못함. RFP 후보 또는 기본값 사용.")
         return []
 
     def _build_win_theme_models(self, win_themes: List[Dict[str, Any]]) -> Optional[List[WinTheme]]:

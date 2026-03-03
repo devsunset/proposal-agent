@@ -379,11 +379,8 @@ class BaseAgent(ABC):
                 return result
 
         snippet = (text[:300] + "..." if len(text) > 300 else text).replace("\n", " ")
-        logger.warning(
-            "JSON 추출 실패 (응답 일부: %s). %s",
-            snippet,
-            JSON_PARSE_FAILED_MESSAGE,
-        )
+        preview = (snippet[:200] + "..." if len(snippet) > 200 else snippet) if snippet else "(빈 응답)"
+        logger.warning(f"JSON 추출 실패 (응답 일부: {preview}). {JSON_PARSE_FAILED_MESSAGE}")
         return {}
 
     def _truncate_text(self, text: str, max_chars: int = 30000) -> str:
