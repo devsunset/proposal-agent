@@ -182,7 +182,7 @@ def generate(
         if "429" in str(err) or "할당량" in str(err):
             msg = f"{_llm} API 할당량 초과(429). 잠시 후 재시도하거나 플랜/결제를 확인하세요."
         else:
-            msg = f"제안서 생성 실패 ({_llm} API 키, 네트워크, 로그 확인)."
+            msg = str(err) or f"제안서 생성 실패 ({_llm} API 키, 네트워크, 로그 확인)."
         try:
             print("제안서 생성 실패:", msg)
         except Exception:

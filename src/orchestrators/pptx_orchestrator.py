@@ -18,6 +18,13 @@ from config.settings import get_settings
 logger = get_logger("pptx_orchestrator")
 
 
+def _bullets_to_text(bullets: Optional[List]) -> str:
+    """BulletPoint 리스트를 한 줄씩 문자열로 변환"""
+    if not bullets:
+        return ""
+    return "\n".join(getattr(b, "text", str(b)) for b in bullets)
+
+
 class PPTXOrchestrator:
     """
     PPTX 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
@@ -211,31 +218,39 @@ class PPTXOrchestrator:
         elif slide_type == "two_column":
             self.generator.add_two_column_slide(
                 title=slide.title,
-                left_title=slide.left_title,
-                right_title=slide.right_title,
-                left_content=slide.left_content,
-                right_content=slide.right_content,
+                left_title=slide.left_title or "",
+                right_title=slide.right_title or "",
+                left_bullets=slide.left_content or [],
+                right_bullets=slide.right_content or [],
                 key_message=slide.key_message,
             )
 
         elif slide_type == "three_column":
+            columns = [
+                {"title": slide.left_title or "", "content": _bullets_to_text(slide.left_content)},
+                {"title": slide.center_title or "", "content": _bullets_to_text(slide.center_content)},
+                {"title": slide.right_title or "", "content": _bullets_to_text(slide.right_content)},
+            ]
             self.generator.add_three_column_slide(
                 title=slide.title,
-                left_title=slide.left_title,
-                center_title=slide.center_title,
-                right_title=slide.right_title,
-                left_content=slide.left_content,
-                center_content=slide.center_content,
-                right_content=slide.right_content,
+                columns=columns,
                 key_message=slide.key_message,
             )
 
         elif slide_type == "table":
-            self.generator.add_table_slide(
-                title=slide.title,
-                table_data=slide.table,
-                key_message=slide.key_message,
-            )
+            if slide.table and (getattr(slide.table, "rows", None) or (isinstance(slide.table, dict) and slide.table.get("rows"))):
+                self.generator.add_table_slide(
+                    title=slide.title,
+                    table_data=slide.table,
+                    key_message=slide.key_message,
+                )
+            else:
+                self.generator.add_content_slide(
+                    title=slide.title,
+                    subtitle=slide.subtitle,
+                    bullets=slide.bullets,
+                    key_message=slide.key_message,
+                )
 
         elif slide_type == "chart":
             self.chart_generator.add_chart_slide(

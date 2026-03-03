@@ -115,6 +115,8 @@ class PPTXGenerator:
         bullets: Optional[List[BulletPoint]] = None,
         key_message: Optional[str] = None,
         notes: Optional[str] = None,
+        subtitle: Optional[str] = None,
+        layout_hint: Optional[str] = None,
     ) -> None:
         """
         콘텐츠 슬라이드 추가
@@ -124,6 +126,8 @@ class PPTXGenerator:
             bullets: 불릿 포인트 목록
             key_message: 핵심 메시지 (슬라이드 하단)
             notes: 발표자 노트
+            subtitle: 부제목 (제목 아래 표시)
+            layout_hint: 레이아웃 힌트 (선택, 미사용 시 무시)
         """
         layout_idx = self.template_manager.get_layout_index("content")
 
@@ -134,9 +138,12 @@ class PPTXGenerator:
 
         slide = self.prs.slides.add_slide(slide_layout)
 
-        # 제목
+        # 제목 (subtitle 있으면 함께 표시)
         if slide.shapes.title:
-            slide.shapes.title.text = title
+            title_text = title
+            if subtitle and subtitle.strip():
+                title_text = title + "\n" + subtitle.strip()
+            slide.shapes.title.text = title_text
             self._apply_title_format(slide.shapes.title.text_frame.paragraphs[0])
 
         # 본문 (불릿 포인트)
@@ -178,21 +185,36 @@ class PPTXGenerator:
     def add_table_slide(
         self,
         title: str,
-        headers: List[str],
-        rows: List[List[str]],
+        headers: Optional[List[str]] = None,
+        rows: Optional[List[List[str]]] = None,
         highlight_rows: Optional[List[int]] = None,
         notes: Optional[str] = None,
+        key_message: Optional[str] = None,
+        table_data: Optional[Any] = None,
     ) -> None:
         """
         테이블 슬라이드 추가
 
         Args:
             title: 슬라이드 제목
-            headers: 테이블 헤더
-            rows: 테이블 데이터 행
+            headers: 테이블 헤더 (table_data 없을 때)
+            rows: 테이블 데이터 행 (table_data 없을 때)
             highlight_rows: 강조할 행 인덱스
             notes: 발표자 노트
+            key_message: 핵심 메시지 (하단)
+            table_data: TableData 또는 dict (있으면 headers/rows 추출)
         """
+        if table_data is not None:
+            if hasattr(table_data, "headers") and hasattr(table_data, "rows"):
+                headers = headers or getattr(table_data, "headers", [])
+                rows = rows or getattr(table_data, "rows", [])
+                highlight_rows = highlight_rows or getattr(table_data, "highlight_rows", None)
+            elif isinstance(table_data, dict):
+                headers = headers or table_data.get("headers", [])
+                rows = rows or table_data.get("rows", [])
+                highlight_rows = highlight_rows or table_data.get("highlight_rows")
+        headers = headers or []
+        rows = rows or []
         layout_idx = self.template_manager.get_layout_index("blank")
 
         try:
@@ -250,6 +272,10 @@ class PPTXGenerator:
 
                 self._format_table_cell(cell, is_header=False)
 
+        # 핵심 메시지 (하단)
+        if key_message:
+            self._add_key_message(slide, key_message)
+
         # 발표자 노트
         if notes:
             notes_slide = slide.notes_slide
@@ -259,10 +285,11 @@ class PPTXGenerator:
         self,
         title: str,
         left_title: str,
-        left_bullets: List[BulletPoint],
-        right_title: str,
-        right_bullets: List[BulletPoint],
+        left_bullets: Optional[List[BulletPoint]] = None,
+        right_title: str = "",
+        right_bullets: Optional[List[BulletPoint]] = None,
         notes: Optional[str] = None,
+        key_message: Optional[str] = None,
     ) -> None:
         """
         2단 슬라이드 추가
@@ -274,7 +301,10 @@ class PPTXGenerator:
             right_title: 오른쪽 열 제목
             right_bullets: 오른쪽 열 불릿
             notes: 발표자 노트
+            key_message: 핵심 메시지 (하단)
         """
+        left_bullets = left_bullets or []
+        right_bullets = right_bullets or []
         layout_idx = self.template_manager.get_layout_index("blank")
 
         try:
@@ -298,6 +328,9 @@ class PPTXGenerator:
             Inches(6.93), Inches(1.5), Inches(5.9), Inches(5.5)
         )
         self._fill_column(right_box, right_title, right_bullets)
+
+        if key_message:
+            self._add_key_message(slide, key_message)
 
         # 발표자 노트
         if notes:
@@ -398,8 +431,9 @@ class PPTXGenerator:
     def add_three_column_slide(
         self,
         title: str,
-        columns: List[dict],
+        columns: Optional[List[dict]] = None,
         notes: Optional[str] = None,
+        key_message: Optional[str] = None,
     ) -> None:
         """
         3단 레이아웃 슬라이드 추가
@@ -408,7 +442,9 @@ class PPTXGenerator:
             title: 슬라이드 제목
             columns: [{"title": "열1", "content": "내용", "icon": "★"}, ...]
             notes: 발표자 노트
+            key_message: 핵심 메시지 (하단)
         """
+        columns = columns or []
         layout_idx = self.template_manager.get_layout_index("blank")
 
         try:
@@ -431,6 +467,9 @@ class PPTXGenerator:
         for i, col in enumerate(columns[:3]):
             left = left_start + i * (col_width + gap)
             self._add_column_box(slide, col, left, top, col_width, col_height)
+
+        if key_message:
+            self._add_key_message(slide, key_message)
 
         # 발표자 노트
         if notes:
