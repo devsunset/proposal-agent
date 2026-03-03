@@ -378,8 +378,11 @@ class BaseAgent(ABC):
             if result is not None and isinstance(result, dict):
                 return result
 
-        # 폴백: 마크다운 뒤에 JSON이 올 때. "project_name" 등 키가 보이는 구간에서 { } 블록 찾기
-        for anchor in ('"project_name"', '"client_name"', '"project_overview"', '"project_type"'):
+        # 폴백: 마크다운 뒤에 JSON이 올 때. RFP/Phase 응답에 흔한 키 기준으로 { } 블록 찾기
+        for anchor in (
+            '"project_name"', '"client_name"', '"project_overview"', '"project_type"',
+            '"win_themes"', '"slides"', '"agenda"', '"kpis"',
+        ):
             idx = text.find(anchor)
             if idx == -1:
                 continue
