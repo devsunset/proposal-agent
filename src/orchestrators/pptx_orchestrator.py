@@ -45,7 +45,7 @@ class PPTXOrchestrator:
         self,
         content: ProposalContent,
         output_path: Path,
-        template_name: str = "guide_template",
+        template_name: Optional[str] = None,
         progress_callback: Optional[Callable] = None,
     ) -> Path:
         """
@@ -54,15 +54,15 @@ class PPTXOrchestrator:
         Args:
             content: LLM이 생성한 제안서 콘텐츠 (Impact-8 구조)
             output_path: 출력 PPTX 경로
-            template_name: 사용할 템플릿/스타일
+            template_name: 사용할 템플릿 파일명(확장자 제외). None이면 템플릿 미사용(기본 디자인).
             progress_callback: 진행 상황 콜백
 
         Returns:
             생성된 PPTX 파일 경로
         """
         try:
-            # 프레젠테이션 초기화 (Modern 스타일 적용)
-            self.generator.create_presentation(template_name)
+            # 프레젠테이션 초기화 (template_name이 None이면 기본 디자인만 사용)
+            self.generator.create_presentation(template_name or "")
 
             # 총 단계: 티저 + Phase 1~7 + 저장
             has_teaser = content.teaser is not None

@@ -287,24 +287,29 @@ class TemplateManager:
                 return f
         return None
 
-    def load_template(self, template_name: str = "base_template") -> Presentation:
+    def load_template(self, template_name: Optional[str] = "base_template") -> Presentation:
         """
         템플릿 PPTX 로드 후 해당 파일의 테마(색상·폰트)를 제안서 작성 규칙으로 적용.
 
+        template_name이 None 또는 빈 문자열이면: 템플릿 파일을 사용하지 않고
+        빈 프레젠테이션 + 기본 디자인 시스템만 사용 (기존 품질 우선 로직).
+
+        그 외:
         1) templates/{template_name}.pptx 가 있으면 해당 파일 사용
         2) 없으면 templates/ 하위에서 '가이드' 또는 'guide'가 포함된 .pptx를 동적으로 검색해 사용
         3) 둘 다 없으면 빈 프레젠테이션 생성 (기본 디자인 시스템 사용)
 
-        로드한 PPTX의 기존 슬라이드는 제거하고, 레이아웃·테마만 유지한 뒤
-        같은 파일에서 추출한 색상·폰트 규칙으로 제안서를 생성합니다.
-
         Args:
-            template_name: 템플릿 파일명 (확장자 제외). 인자로 주지 않으면 'guide_template'으로
-                           templates/guide_template.pptx 또는 guide 포함 .pptx 자동 선택.
+            template_name: None/빈 문자열 = 템플릿 미사용(기본 디자인). 파일명 지정 시 해당 .pptx 사용.
 
         Returns:
             Presentation 객체 (슬라이드 0장, 레이아웃/테마만 적용된 상태)
         """
+        if not (template_name or "").strip():
+            logger.info("템플릿 미사용: 기본 디자인으로 제안서 생성 (빈 프레젠테이션)")
+            self._layout_geometry = None
+            return Presentation()
+
         safe_name = safe_filename(template_name, max_len=80)
         template_path = (self.templates_dir / f"{safe_name}.pptx").resolve()
         templates_resolved = self.templates_dir.resolve()

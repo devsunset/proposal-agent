@@ -86,11 +86,11 @@ def generate(
         "-o",
         help="출력 디렉토리",
     ),
-    template: str = typer.Option(
-        "guide_template",
+    template: Optional[str] = typer.Option(
+        None,
         "--template",
         "-T",
-        help="템플릿 PPTX 파일명(확장자 제외). 미지정 시 templates 폴더에서 'guide' 포함 .pptx 자동 선택 후 해당 파일 규칙으로 생성.",
+        help="템플릿 PPTX 파일명(확장자 제외). 미지정 시 템플릿 없이 기본 디자인으로 제안서 생성(권장). 지정 시 해당 .pptx 테마/레이아웃 기준으로 생성.",
     ),
     save_json: bool = typer.Option(
         False,
@@ -307,7 +307,7 @@ async def _generate_async_impl(
     ) as progress:
         task = progress.add_task("PPTX 생성 중...", total=None)
         _last_phase_pptx = [-1]
-        update_progress = _make_progress_callback(console, progress, task, _last_phase_pptx)
+        update_progress = _make_pptx_progress_callback(console, progress, task, _last_phase_pptx)
 
         # 유니크 파일명: 제목_접미사.pptx (접미사 = YYYYMMDDHHmmssfff)
         _now = datetime.now()
@@ -338,7 +338,7 @@ async def _generate_async_impl(
             f"[bold]발주처:[/bold] {content.client_name}\n"
             f"[bold]유형:[/bold] {get_type_display_name(content.proposal_type.value)}\n"
             f"[bold]슬라이드 수:[/bold] {total_slides}장\n"
-            f"[bold]디자인 스타일:[/bold] {content.design_style or 'modern'}",
+            f"[bold]디자인 스타일:[/bold] {template if template else '기본(템플릿 미사용)'}",
             title="Complete",
             border_style="green",
         )
@@ -348,8 +348,8 @@ async def _generate_async_impl(
 
 def _make_progress_callback(console, progress, task, last_phase_ref):
     """
-    Phase 패널 출력 + progress.update. 패널 아래에는 해당 Phase 로그만 나오도록
-    새 Phase 전환 시 먼저 줄바꿈으로 이전 스피너 줄을 닫고, 스피너 갱신 후 패널 출력.
+    Step 1(콘텐츠 생성)용. Phase 전환 시: 줄바꿈 → 패널 출력 → 스피너를 해당 Phase로 갱신.
+    패널 아래에는 스피너/로그가 해당 Phase만 나오도록 함.
     """
     def update_progress(p):
         msg = p.get("message", "처리 중...")
@@ -359,11 +359,9 @@ def _make_progress_callback(console, progress, task, last_phase_ref):
             if len(tok) == 2 and tok[1].isdigit():
                 n = int(tok[1])
                 if 0 <= n <= 7 and n != last_phase_ref[0]:
-                    # 1) 먼저 줄바꿈으로 현재 줄 종료 → 이전 Phase 스피너 문구가 다음 패널 아래에 안 찍히게
+                    # 1) 줄바꿈으로 이전 스피너 줄 종료
                     console.print()
-                    # 2) 스피너를 현재 Phase 메시지로 갱신
-                    progress.update(task, description=msg)
-                    # 3) 해당 Phase 패널 출력 → 아래에는 이 Phase 로그만 나옴
+                    # 2) 해당 Phase 패널 먼저 출력 → 그 아래에 이 Phase 로그만 나오게
                     console.print(
                         Panel(
                             "",
@@ -371,9 +369,42 @@ def _make_progress_callback(console, progress, task, last_phase_ref):
                             border_style="yellow",
                         )
                     )
+                    # 3) 스피너를 현재 Phase로 갱신 (패널 아래 줄에 Phase N 메시지로 그려짐)
+                    progress.update(task, description=msg)
                     last_phase_ref[0] = n
                     return
         progress.update(task, description=msg)
+    return update_progress
+
+
+def _make_pptx_progress_callback(console, progress, task, last_phase_ref):
+    """
+    Step 2(PPTX 생성)용. Phase 패널만 출력하고 스피너는 항상 "PPTX 생성 중..." 유지.
+    패널 아래에는 로그만 해당 Phase 슬라이드 생성 완료 메시지로 나오게 함.
+    """
+    PPTX_MSG = "PPTX 생성 중..."
+
+    def update_progress(p):
+        msg = p.get("message", "처리 중...")
+        parts = msg.split(":", 1)
+        if len(parts) >= 2 and parts[0].strip().startswith("Phase "):
+            tok = parts[0].strip().split()
+            if len(tok) == 2 and tok[1].isdigit():
+                n = int(tok[1])
+                if 0 <= n <= 7 and n != last_phase_ref[0]:
+                    console.print()
+                    console.print(
+                        Panel(
+                            "",
+                            title=f"[bold]Phase {n}: {PHASE_TITLES.get(n, '')}[/bold]",
+                            border_style="yellow",
+                        )
+                    )
+                    # Step 2에서는 스피너 문구를 Phase별이 아닌 공통으로 고정 → 패널 아래 로그만 해당 Phase로 보이게
+                    progress.update(task, description=PPTX_MSG)
+                    last_phase_ref[0] = n
+                    return
+        progress.update(task, description=msg if msg else PPTX_MSG)
     return update_progress
 
 
@@ -531,7 +562,8 @@ def templates():
     templates_dir = get_settings().templates_dir
 
     console.print("\n[bold]디자인 스타일:[/bold]")
-    console.print("  - [cyan]guide_template[/cyan] (기본) - templates/ 내 이름에 'guide' 포함 .pptx 자동 선택, 해당 파일 테마로 제안서 생성")
+    console.print("  - [dim]템플릿 미지정 시[/dim] (기본) - 템플릿 없이 기본 디자인으로 제안서 생성 (권장)")
+    console.print("  - [cyan]-T guide_template[/cyan] 등 지정 시 - 해당 .pptx 테마/레이아웃 기준으로 생성")
 
     if not templates_dir.exists():
         console.print("\n[yellow]templates 디렉토리가 없습니다.[/yellow]")
