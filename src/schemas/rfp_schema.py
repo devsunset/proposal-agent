@@ -1,5 +1,8 @@
 """
 RFP 분석 결과 스키마
+
+RFPAnalyzer 에이전트가 LLM 응답을 파싱한 뒤 사용하는 Pydantic 모델들.
+평가 기준, 요구사항, 산출물, 일정, 예산 및 전략적 분석 필드(Pain Point, Win Theme 등)를 정의합니다.
 """
 
 from typing import Any, Dict, List, Optional
@@ -8,8 +11,15 @@ from pydantic import BaseModel, Field
 
 
 class EvaluationCriterion(BaseModel):
-    """평가 기준"""
+    """
+    평가 기준 한 항목.
 
+    Attributes:
+        category: 분야 (기술, 가격 등)
+        item: 평가 항목 내용
+        weight: 배점 (비율)
+        description: 부가 설명
+    """
     category: str
     item: str
     weight: Optional[float] = None
@@ -17,25 +27,45 @@ class EvaluationCriterion(BaseModel):
 
 
 class Requirement(BaseModel):
-    """요구사항"""
+    """
+    요구사항 한 항목.
 
-    category: str  # 기능, 비기능, 기술, 관리 등
+    Attributes:
+        category: 기능, 비기능, 기술, 관리 등
+        requirement: 요구사항 내용
+        priority: 필수 / 선택 / 권장
+        notes: 비고
+    """
+    category: str
     requirement: str
-    priority: str = "필수"  # 필수, 선택, 권장
+    priority: str = "필수"
     notes: Optional[str] = None
 
 
 class Deliverable(BaseModel):
-    """산출물"""
+    """
+    산출물 한 항목.
 
+    Attributes:
+        name: 산출물명
+        phase: 단계
+        description: 설명
+    """
     name: str
     phase: Optional[str] = None
     description: Optional[str] = None
 
 
 class TimelineInfo(BaseModel):
-    """일정 정보"""
+    """
+    일정 정보.
 
+    Attributes:
+        total_duration: 전체 기간
+        start_date, end_date: 시작/종료일
+        milestones: 마일스톤 목록
+        phases: 단계별 일정
+    """
     total_duration: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
@@ -44,8 +74,15 @@ class TimelineInfo(BaseModel):
 
 
 class BudgetInfo(BaseModel):
-    """예산 정보"""
+    """
+    예산 정보.
 
+    Attributes:
+        total_budget: 총 예산
+        budget_breakdown: 항목별 내역
+        payment_terms: 지급 조건
+        notes: 비고
+    """
     total_budget: Optional[str] = None
     budget_breakdown: Optional[Dict[str, Any]] = None
     payment_terms: Optional[str] = None
@@ -53,7 +90,12 @@ class BudgetInfo(BaseModel):
 
 
 class RFPAnalysis(BaseModel):
-    """RFP 분석 결과"""
+    """
+    RFP 분석 결과 전체 모델.
+
+    기본 정보, 요구사항, 평가 기준, 산출물, 일정·예산과 함께
+    v3.6 전략 필드(project_type, pain_points, win_theme_candidates, evaluation_strategy 등)를 포함합니다.
+    """
 
     # 기본 정보
     project_name: str = Field(description="프로젝트명")

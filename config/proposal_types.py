@@ -1,8 +1,9 @@
 """
 프로젝트 유형별 제안서 구조 설정
 
-각 프로젝트 유형에 맞는 Phase 구성, 권장 페이지 수, 특화 콘텐츠 정의.
-고도화: config/phase_profiles.json 이 있으면 해당 유형 설정을 외부에서 로드(선택).
+각 프로젝트 유형(marketing_pr, event, it_system 등)에 맞는 Phase 구성, 권장 페이지 수,
+특화 콘텐츠를 정의합니다. config/phase_profiles.json이 있으면 해당 유형 설정을
+외부에서 로드할 수 있습니다(선택).
 """
 
 import json
@@ -13,7 +14,11 @@ from enum import Enum
 
 
 class ProposalType(str, Enum):
-    """제안서 유형"""
+    """
+    제안서 유형 열거형.
+
+    RFP 분석·콘텐츠 생성 시 유형별 Phase 비중·슬라이드 수가 이 값에 따라 결정됩니다.
+    """
     MARKETING_PR = "marketing_pr"      # 마케팅/PR/소셜미디어
     EVENT = "event"                    # 이벤트/행사
     IT_SYSTEM = "it_system"            # IT/시스템
@@ -24,24 +29,45 @@ class ProposalType(str, Enum):
 
 @dataclass
 class PhaseConfig:
-    """Phase 구성 설정"""
+    """
+    단일 Phase(예: HOOK, SUMMARY, ACTION PLAN) 구성 설정.
+
+    Attributes:
+        title: Phase 제목 (예: "ACTION PLAN")
+        subtitle: 부제목/설명
+        weight: 전체 대비 비중 (0.0 ~ 1.0)
+        min_slides: 최소 슬라이드 수
+        max_slides: 최대 슬라이드 수
+        required: 필수 Phase 여부
+        special_focus: 특별히 강조할 요소 목록 (프롬프트에 반영)
+    """
     title: str
     subtitle: str
-    weight: float                      # 전체 대비 비중 (0.0 ~ 1.0)
+    weight: float
     min_slides: int
     max_slides: int
     required: bool = True
-    special_focus: Optional[List[str]] = None  # 특별히 강조할 요소
+    special_focus: Optional[List[str]] = None
 
 
 @dataclass
 class ProposalTypeConfig:
-    """프로젝트 유형별 설정"""
+    """
+    프로젝트 유형별 전체 설정.
+
+    Attributes:
+        type_name: 유형 표시명 (한글)
+        description: 유형 설명
+        total_pages_range: (최소 페이지, 최대 페이지)
+        phases: Phase 번호 → PhaseConfig 매핑
+        special_features: 해당 유형 특화 기능 목록
+        recommended_style: 권장 디자인 스타일 (예: "modern")
+    """
     type_name: str
     description: str
-    total_pages_range: tuple           # (min, max)
+    total_pages_range: tuple
     phases: Dict[int, PhaseConfig]
-    special_features: List[str]        # 특화 기능
+    special_features: List[str]
     recommended_style: str = "modern"
 
 
@@ -551,12 +577,17 @@ PROPOSAL_TYPE_CONFIGS: Dict[ProposalType, ProposalTypeConfig] = {
 
 
 def _phase_profiles_path() -> Path:
-    """phase_profiles.json 경로 (config 디렉터리 기준)."""
+    """config 디렉터리 기준 phase_profiles.json 파일 경로 반환."""
     return Path(__file__).resolve().parent / "phase_profiles.json"
 
 
 def _load_phase_profiles() -> Optional[Dict[str, Any]]:
-    """고도화: phase_profiles.json 로드. 없거나 실패 시 None."""
+    """
+    phase_profiles.json 로드. 없거나 파싱 실패 시 None.
+
+    Returns:
+        유형 코드 → 프로파일 딕셔너리 매핑, 또는 None.
+    """
     path = _phase_profiles_path()
     if not path.exists():
         return None
@@ -567,7 +598,18 @@ def _load_phase_profiles() -> Optional[Dict[str, Any]]:
 
 
 def _config_from_profile(type_value: str, profile: Dict[str, Any]) -> ProposalTypeConfig:
-    """JSON 프로파일 한 유형 → ProposalTypeConfig 변환. 프로파일에 없는 Phase는 기본 설정 유지."""
+    """
+    JSON 프로파일 한 유형을 ProposalTypeConfig로 변환.
+
+    프로파일에 없는 Phase는 해당 유형의 기본 설정(PROPOSAL_TYPE_CONFIGS)을 유지합니다.
+
+    Args:
+        type_value: 유형 코드 (예: "marketing_pr")
+        profile: phase_profiles.json 내 한 유형의 딕셔너리
+
+    Returns:
+        ProposalTypeConfig 인스턴스
+    """
     try:
         base_config = PROPOSAL_TYPE_CONFIGS.get(ProposalType(type_value), GENERAL_CONFIG)
     except (ValueError, KeyError):
@@ -607,7 +649,18 @@ def _config_from_profile(type_value: str, profile: Dict[str, Any]) -> ProposalTy
 
 
 def get_config(proposal_type: ProposalType) -> ProposalTypeConfig:
-    """프로젝트 유형에 맞는 설정 반환. phase_profiles.json 있으면 해당 유형은 외부 설정 우선."""
+    """
+    프로젝트 유형에 맞는 Phase·페이지 설정 반환.
+
+    phase_profiles.json에 해당 유형이 있으면 외부 설정을 우선 적용하고,
+    없으면 PROPOSAL_TYPE_CONFIGS의 기본 설정을 반환합니다.
+
+    Args:
+        proposal_type: 제안서 유형 열거값
+
+    Returns:
+        ProposalTypeConfig
+    """
     type_value = proposal_type.value
     profiles = _load_phase_profiles()
     if profiles and type_value in profiles and isinstance(profiles[type_value], dict):
@@ -616,7 +669,15 @@ def get_config(proposal_type: ProposalType) -> ProposalTypeConfig:
 
 
 def get_type_display_name(type_value: str) -> str:
-    """유형 코드(예: marketing_pr)에 대한 표시용 한글명 반환. 단일 소스."""
+    """
+    유형 코드에 대한 표시용 한글명 반환 (단일 소스).
+
+    Args:
+        type_value: 유형 코드 (예: "marketing_pr")
+
+    Returns:
+        한글 표시명 (예: "마케팅/PR"). 알 수 없는 코드는 그대로 반환.
+    """
     try:
         pt = ProposalType(type_value)
         return get_config(pt).type_name
@@ -625,13 +686,31 @@ def get_type_display_name(type_value: str) -> str:
 
 
 def get_phase_config(proposal_type: ProposalType, phase_number: int) -> PhaseConfig:
-    """특정 Phase 설정 반환"""
+    """
+    특정 유형·Phase 번호에 해당하는 PhaseConfig 반환.
+
+    Args:
+        proposal_type: 제안서 유형
+        phase_number: Phase 번호 (0~7)
+
+    Returns:
+        PhaseConfig (없으면 KeyError 가능)
+    """
     config = get_config(proposal_type)
     return config.phases.get(phase_number)
 
 
 def calculate_pages(proposal_type: ProposalType, total_pages: int = 100) -> Dict[int, tuple]:
-    """유형과 총 페이지에 따른 Phase별 페이지 수 계산"""
+    """
+    유형과 총 페이지 수에 따라 Phase별 (min_pages, max_pages) 계산.
+
+    Args:
+        proposal_type: 제안서 유형
+        total_pages: 전체 목표 페이지 수 (기본 100)
+
+    Returns:
+        Phase 번호 → (min_pages, max_pages) 튜플 매핑
+    """
     config = get_config(proposal_type)
     result = {}
 
@@ -645,7 +724,15 @@ def calculate_pages(proposal_type: ProposalType, total_pages: int = 100) -> Dict
 
 
 def get_prompt_file(phase_number: int) -> str:
-    """Phase 번호에 해당하는 프롬프트 파일 경로 반환"""
+    """
+    Phase 번호에 해당하는 프롬프트 파일 경로(상대) 반환.
+
+    Args:
+        phase_number: Phase 번호 (0~7)
+
+    Returns:
+        예: "config/prompts/phase4_action.txt"
+    """
     phase_names = {
         0: "hook",
         1: "summary",

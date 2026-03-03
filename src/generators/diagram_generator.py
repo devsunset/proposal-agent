@@ -1,13 +1,14 @@
 """
 다이어그램 생성기 ([회사명])
 
-제안서 내용에 맞는 도식화 요소 생성:
-- 프로세스 플로우
-- 피처 박스 (3-4열)
-- 아이콘 카드
-- KPI 대시보드
+제안서 내용에 맞는 도식화 요소를 슬라이드에 추가합니다.
+
+- 프로세스 플로우 (arrow / chevron / circle 스타일)
+- 피처 박스 (3~4열 그리드)
+- KPI 대시보드 (숫자 강조 카드)
 - Before/After 비교
-- 컨셉 다이어그램
+- 컨셉 다이어그램 (중앙 + 주변 요소)
+- 경쟁 비교 시각화 (바 차트)
 """
 
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
@@ -27,7 +28,12 @@ logger = get_logger("diagram_generator")
 
 
 class DiagramGenerator:
-    """도식화 요소 생성기"""
+    """
+    도식화 요소 생성기.
+
+    TemplateManager 디자인 시스템을 사용해 프로세스 플로우, 피처 박스, KPI 카드,
+    Before/After, 컨셉 다이어그램, 경쟁 비교 등을 슬라이드에 배치합니다.
+    """
 
     def __init__(self, template_manager: TemplateManager):
         self.template_manager = template_manager

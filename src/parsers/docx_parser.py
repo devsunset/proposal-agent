@@ -1,4 +1,9 @@
-"""DOCX 문서 파서"""
+"""
+DOCX 문서 파서
+
+python-docx를 사용해 .docx/.doc 파일에서 텍스트, 테이블, 헤딩 기반 섹션, 메타데이터를 추출합니다.
+RFP가 워드 문서로 제공될 때 사용됩니다.
+"""
 
 from pathlib import Path
 from typing import Any, Dict, List
@@ -13,7 +18,11 @@ logger = get_logger("docx_parser")
 
 
 class DOCXParser(BaseParser):
-    """DOCX 문서 파서"""
+    """
+    DOCX 문서 전용 파서.
+
+    지원 확장자: .docx, .doc
+    """
 
     @property
     def supported_extensions(self) -> List[str]:
@@ -21,13 +30,13 @@ class DOCXParser(BaseParser):
 
     def parse(self, file_path: Path) -> Dict[str, Any]:
         """
-        DOCX를 파싱하여 구조화된 데이터 반환
+        DOCX를 파싱하여 raw_text, tables, sections, metadata, styles 반환.
 
         Args:
             file_path: DOCX 파일 경로
 
         Returns:
-            파싱된 데이터 딕셔너리
+            BaseParser 규격의 딕셔너리 + styles(사용 스타일 목록)
         """
         logger.info(f"DOCX 파싱 시작: {file_path}")
 
@@ -76,7 +85,7 @@ class DOCXParser(BaseParser):
         return tables
 
     def _table_to_dict(self, table: Table, index: int) -> Dict[str, Any]:
-        """Table 객체를 딕셔너리로 변환"""
+        """docx Table 객체를 headers/rows/raw_data 구조의 딕셔너리로 변환. 첫 행을 헤더로 처리."""
         rows = []
 
         for row in table.rows:
@@ -100,7 +109,7 @@ class DOCXParser(BaseParser):
         }
 
     def _extract_sections(self, doc: Document) -> List[Dict[str, Any]]:
-        """헤딩 기반 섹션 추출"""
+        """문서 내 Heading 스타일을 기준으로 섹션(title, content, level) 목록 추출."""
         sections = []
         current_section = {"title": "", "content": [], "level": 0}
 
@@ -134,7 +143,7 @@ class DOCXParser(BaseParser):
         return sections
 
     def _extract_metadata(self, doc: Document) -> Dict[str, Any]:
-        """메타데이터 추출"""
+        """core_properties에서 제목, 작성자, 주제, 키워드, 생성/수정일 추출."""
         try:
             core_props = doc.core_properties
             return {
@@ -150,7 +159,7 @@ class DOCXParser(BaseParser):
             return {}
 
     def _extract_styles(self, doc: Document) -> Dict[str, Any]:
-        """사용된 스타일 추출"""
+        """문서에서 사용된 단락 스타일 이름 목록 추출 (styles_used)."""
         styles_used = set()
 
         for para in doc.paragraphs:

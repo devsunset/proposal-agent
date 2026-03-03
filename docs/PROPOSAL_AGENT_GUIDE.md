@@ -29,9 +29,9 @@ proposal-agent/
 ├── main.py                     # CLI (generate, analyze, types, info, templates)
 ├── .env.example                # 환경 변수 예시
 ├── config/
-│   ├── settings.py             # API 키·LLM 선택·경로·재시도/토큰
-│   ├── proposal_types.py      # 제안서 유형 6종·가중치 (get_type_display_name)
-│   └── prompts/               # Phase별 프롬프트 (phase0_hook ~ phase7_investment)
+│   ├── settings.py             # API 키·LLM 선택·경로·재시도/토큰 (Pydantic Settings)
+│   ├── proposal_types.py      # 제안서 유형 6종·Phase 가중치 (get_config, get_type_display_name)
+│   └── prompts/               # Phase별 프롬프트 (phase0_hook ~ phase7_investment, content_guidelines)
 │
 ├── src/
 │   ├── parsers/                # get_parser_for_path, PDF/DOCX/TXT/PPTX
@@ -417,7 +417,7 @@ class ProposalContent(BaseModel):
 
     # Phase 콘텐츠
     teaser: Optional[TeaserContent]          # Phase 0
-    phases: Dict[int, PhaseContent]          # Phase 1-7
+    phases: List[PhaseContent]               # Phase 1-7 (순서대로)
 ```
 
 ### 6.2 WinTheme
@@ -526,6 +526,7 @@ python main.py analyze input/rfp.pdf
 ## 10. 참고 자료
 
 - **레퍼런스 제안서**: 실제 수주 성공 제안서 (200p+) — 구조 분석 레퍼런스
-- **디자인 시스템**: `src/generators/template_manager.py` (색상·폰트·레이아웃)
+- **디자인 시스템**: `src/generators/template_manager.py` (`_get_default_design_system`, 템플릿 PPTX 테마 추출)
 - **콘텐츠 가이드라인**: `config/prompts/content_guidelines.txt`
-- **스키마 정의**: `src/schemas/proposal_schema.py`
+- **스키마 정의**: `src/schemas/proposal_schema.py`, `src/schemas/rfp_schema.py`
+- **Phase 가중치/유형 설정**: `config/proposal_types.py` (phase_profiles.json 선택 로드 지원)

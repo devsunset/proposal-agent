@@ -1,4 +1,9 @@
-"""PPTX 문서 파서 (RFP가 파워포인트로 된 경우)"""
+"""
+PPTX 문서 파서 (RFP가 파워포인트로 된 경우)
+
+python-pptx로 슬라이드별 텍스트(셰이프·테이블 셀)와 테이블 목록을 추출합니다.
+RFP 분석용으로 다른 파서와 동일한 포맷(raw_text, tables, sections, metadata)을 반환합니다.
+"""
 
 from pathlib import Path
 from typing import Any, Dict, List
@@ -11,7 +16,11 @@ logger = get_logger("pptx_parser")
 
 
 class PPTXParser(BaseParser):
-    """PPTX 문서 파서 — 슬라이드 텍스트 및 테이블 추출"""
+    """
+    PPTX 문서 전용 파서. 슬라이드 텍스트 및 테이블 추출.
+
+    지원 확장자: .pptx
+    """
 
     @property
     def supported_extensions(self) -> List[str]:
@@ -19,13 +28,13 @@ class PPTXParser(BaseParser):
 
     def parse(self, file_path: Path) -> Dict[str, Any]:
         """
-        PPTX를 파싱하여 구조화된 데이터 반환 (RFP 분석용 동일 포맷)
+        PPTX를 파싱하여 raw_text, tables, sections, metadata 반환.
 
         Args:
             file_path: PPTX 파일 경로
 
         Returns:
-            파싱된 데이터 딕셔너리 (raw_text, tables, sections, metadata)
+            RFP 분석용 통일 포맷 딕셔너리
         """
         logger.info(f"PPTX 파싱 시작: {file_path}")
 
@@ -102,7 +111,7 @@ class PPTXParser(BaseParser):
         return tables
 
     def _extract_sections_from_text(self, text: str) -> List[Dict[str, Any]]:
-        """raw_text를 줄 단위로 나누어 섹션처럼 구성"""
+        """'--- 슬라이드 N ---' 구분자 기준으로 블록을 나누어 슬라이드 단위 섹션으로 구성."""
         sections = []
         if not text.strip():
             return sections

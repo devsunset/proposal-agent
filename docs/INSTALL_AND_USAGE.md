@@ -166,16 +166,16 @@ $ python main.py generate input/rfp.pdf -n "디지털 마케팅" -c "A공사"
   │  Impact-8 Framework                     │
   └─────────────────────────────────────────┘
 
-  Phase 1: 콘텐츠 생성 (설정된 LLM - Impact-8)
+  Step 1: 콘텐츠 생성 (설정된 LLM - Impact-8)
   ✓ RFP 파싱 완료 (PDF/DOCX/TXT/PPTX)
   ✓ RFP 분석 완료 (프로젝트명·발주처·유형)
   ✓ Phase 0: HOOK 생성 완료
   ✓ Phase 1: SUMMARY 생성 완료
   ✓ Phase 2~7 생성 완료
 
-  Phase 2: PPTX 생성 (Modern 스타일)
-  ✓ 58장 슬라이드 생성 완료
-  ✓ 저장: output/디지털_마케팅_제안서.pptx
+  Step 2: PPTX 생성 (Modern 스타일)
+  ✓ 슬라이드 생성 완료
+  ✓ 저장: output/디지털_마케팅_YYYYMMDDHHmmssfff.pptx
 ```
 
 ---
@@ -186,7 +186,7 @@ $ python main.py generate input/rfp.pdf -n "디지털 마케팅" -c "A공사"
 
 ```
 output/
-  └── 프로젝트명_제안서.pptx     ← 최종 결과물
+  └── 프로젝트명_YYYYMMDDHHmmssfff.pptx   ← 최종 결과물 (타임스탬프로 유일 파일명)
 ```
 
 ### 제안서 구성 (Impact-8 Framework)
@@ -236,14 +236,15 @@ PPTX는 **TemplateManager** + **PPTXGenerator** + **ChartGenerator** + **Diagram
 
 | 구성 요소 | 역할 |
 |----------|------|
-| **TemplateManager** | 템플릿 로드(`templates/*.pptx`), 레이아웃 인덱스(`slide_layouts.json`), 디자인 시스템(색상·폰트·간격) |
+| **TemplateManager** | 템플릿 로드(`templates/*.pptx`), 레이아웃 인덱스(`slide_layouts.json`), 디자인 시스템(색상·폰트·간격). 로드한 PPTX 테마를 동적으로 추출해 적용 |
 | **PPTXGenerator** | 표지·섹션 구분·콘텐츠·테이블·2/3단·키메시지·비교·목차·티저 등 슬라이드 생성 |
-| **ChartGenerator** | 차트, 타임라인, 조직도 슬라이드 |
-| **DiagramGenerator** | 프로세스 플로우 등 다이어그램 |
+| **ChartGenerator** | 차트, 타임라인, 조직도, KPI 카드, 경쟁사 비교, ROI 시각화 |
+| **DiagramGenerator** | 프로세스 플로우, 피처 박스, Before/After, 컨셉 다이어그램 |
 
 ### 템플릿/스타일
 
-- `--template` 옵션 기본값: `guide_template`. `templates/guide_template.pptx`가 있으면 해당 파일을 기반으로 하고, 없으면 templates/ 내 '가이드' 또는 'guide'가 포함된 .pptx를 찾거나, 없을 경우 빈 프레젠테이션에 코드 상 디자인 시스템(색상·폰트)이 적용됩니다.
+- `-T` / `--template` 미지정 시: 템플릿 파일을 사용하지 않고 **빈 프레젠테이션 + 기본 디자인 시스템**으로 제안서를 생성합니다(권장).
+- `-T guide_template` 등으로 지정 시: `templates/guide_template.pptx`가 있으면 해당 파일을 사용하고, 없으면 templates/ 내 '가이드' 또는 'guide'가 포함된 .pptx를 찾습니다. 둘 다 없으면 빈 프레젠테이션에 코드 상 디자인 시스템이 적용됩니다.
 - `templates/` 폴더는 로컬용으로 `.gitignore`에 포함될 수 있어, 커스텀 템플릿은 커밋하지 않고 사용할 수 있습니다.
 
 ### 사용 예시 (코드 레벨)
@@ -282,7 +283,7 @@ config/prompts/
 
 ### 디자인 스타일 수정
 
-`src/generators/template_manager.py`의 `_get_design_system()`에서 컬러·폰트·간격을 변경할 수 있습니다. PPTX 슬라이드 색상은 TemplateManager 디자인 시스템과 `pptx_generator.py`의 스타일 상수를 참조합니다.
+`src/generators/template_manager.py`의 `_get_default_design_system()`에서 컬러·폰트·간격을 변경할 수 있습니다. 템플릿 PPTX를 로드하면 해당 파일의 테마(색상·폰트)가 동적으로 추출되어 디자인 시스템에 병합됩니다.
 
 ```python
 # template_manager.py 예시
@@ -381,11 +382,11 @@ PROPOSAL_TYPE_CONFIGS[ProposalType.MEDIA] = MEDIA_CONFIG
 
 ### 9-4. 디자인 스타일 변경
 
-`src/generators/template_manager.py`의 `_get_design_system()`에서 컬러·폰트·간격을 수정합니다. `pptx_generator.py`의 스타일 상수도 슬라이드 색상에 사용됩니다.
+`src/generators/template_manager.py`의 `_get_default_design_system()`에서 컬러·폰트·간격을 수정합니다. 템플릿 PPTX를 사용할 경우 해당 파일의 테마가 추출되어 디자인 시스템에 반영됩니다.
 
 ### 9-5. 슬라이드 레이아웃 변경
 
-레이아웃 인덱스는 `src/generators/template_manager.py`의 `_load_layouts()`에서 정의됩니다. `templates/slide_layouts.json` 파일이 있으면 해당 설정을 사용하고, 없으면 기본 인덱스(title, section, content, two_column, comparison, blank)를 사용합니다. 슬라이드 유형별 생성 로직은 `src/generators/pptx_generator.py`와 `src/orchestrators/pptx_orchestrator.py`에서 처리됩니다.
+레이아웃 인덱스는 `src/generators/template_manager.py`의 `_load_layouts()`에서 정의됩니다. `templates/slide_layouts.json`이 있으면 해당 설정을 사용하고, 없으면 `_default_layouts()`의 기본 인덱스(title, section, content, two_column, comparison, blank)를 사용합니다. 슬라이드 유형별 생성 로직은 `src/orchestrators/pptx_orchestrator.py`의 `_add_content_slide()`에서 분기하며, `src/generators/pptx_generator.py`, `chart_generator.py`, `diagram_generator.py`를 호출합니다.
 
 ### 9-6. Win Theme 커스터마이징
 
@@ -412,14 +413,14 @@ Win Theme 규칙은 `content_guidelines.txt`에서 조정:
 | 수정 목적 | 수정 파일 |
 |----------|----------|
 | Phase 비중/슬라이드 수 변경 | `config/proposal_types.py` |
-| 새 프로젝트 유형 추가 | `config/proposal_types.py` |
+| 새 프로젝트 유형 추가 | `config/proposal_types.py` (Enum, Config, PROPOSAL_TYPE_CONFIGS) |
 | AI 생성 콘텐츠 규칙 변경 | `config/prompts/phase*.txt` |
 | 전체 톤/스타일 규칙 변경 | `config/prompts/content_guidelines.txt` |
-| 컬러/폰트/디자인 변경 | `src/generators/template_manager.py`, `pptx_generator.STYLE_COLORS` |
+| 컬러/폰트/디자인 변경 | `src/generators/template_manager.py` (`_get_default_design_system`) |
 | 슬라이드 레이아웃 수정 | `templates/slide_layouts.json` 또는 `template_manager._default_layouts()` |
 | Win Theme 전달 방식 변경 | `src/agents/content_generator.py` |
 | RFP 분석 항목 변경 | `src/agents/rfp_analyzer.py` |
-| 데이터 모델 변경 | `src/schemas/proposal_schema.py` |
+| 데이터 모델 변경 | `src/schemas/proposal_schema.py`, `src/schemas/rfp_schema.py` |
 
 ---
 

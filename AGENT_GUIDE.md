@@ -37,9 +37,9 @@ output/테스트 XX/        ← PPTX 출력 (생성 스크립트 + 결과물)
 - 목표 분량: 40~80장 (프로젝트 규모에 따라 조정)
 
 **STEP 4: 실행 및 검증**
-- 스크립트 실행하여 PPTX 생성
+- 스크립트 실행하여 PPTX 생성 (또는 `python main.py generate ...` 직접 실행)
+- 생성 파일: `output/프로젝트명_YYYYMMDDHHmmssfff.pptx` (타임스탬프로 유일 파일명)
 - 오류 발생 시 즉시 수정 후 재실행
-- 최종 파일 경로 안내
 
 ### 레이아웃·슬라이드 (현재 구현)
 
@@ -127,13 +127,12 @@ Win Theme, Executive Summary, Action Title 등은 콘텐츠 생성(Impact-8) 단
 ## 디렉토리 구조
 
 ```
-├── main.py                 # CLI 엔트리포인트
+├── main.py                 # CLI 엔트리포인트 (generate, analyze, types, info, templates)
 ├── AGENT_GUIDE.md          # 본 가이드 (.env LLM_PROVIDER에 따른 동적 적용 안내)
 ├── config/
-│   ├── prompts/            # Phase별 프롬프트 템플릿
-│   │   ├── content_guidelines.txt
-│   │   ├── phase0_hook.txt … phase7_investment.txt
-│   └── proposal_types.py   # 제안서 유형·가중치
+│   ├── settings.py         # API 키·LLM 선택·경로·재시도/토큰 (Pydantic)
+│   ├── proposal_types.py   # 제안서 유형 6종·Phase 가중치 (get_config, get_type_display_name)
+│   └── prompts/            # Phase별 프롬프트 (content_guidelines, phase0_hook ~ phase7_investment)
 ├── src/
 │   ├── parsers/            # 문서 파싱 (PDF, DOCX, TXT, PPTX) — get_parser_for_path
 │   ├── agents/             # RFP 분석·콘텐츠 생성 (설정된 LLM)
@@ -326,7 +325,7 @@ Topic Title에서 Action Title로 전환
 - `src/generators/chart_generator.py` - 차트/다이어그램
 
 ### 디자인 설정
-- `src/generators/template_manager.py` - 템플릿·디자인 시스템 (색상·폰트·레이아웃). Modern 스타일은 코드 내 `_get_design_system()` 등으로 정의됩니다.
+- `src/generators/template_manager.py` - 템플릿 로드·디자인 시스템 (색상·폰트·레이아웃). `_get_default_design_system()`으로 기본값 정의, 템플릿 PPTX 로드 시 해당 파일 테마를 동적 추출해 병합합니다.
 
 ### 콘텐츠 가이드라인
 - `config/prompts/content_guidelines.txt` - Action Title, Win Theme, KPI 산출 근거 작성 가이드

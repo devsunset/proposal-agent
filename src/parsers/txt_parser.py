@@ -1,4 +1,9 @@
-"""TXT 문서 파서"""
+"""
+TXT 문서 파서
+
+UTF-8 우선, 실패 시 CP949/CP1252 등으로 텍스트를 읽고, 번호/장 패턴으로 섹션을 구성합니다.
+테이블은 지원하지 않으며 빈 목록을 반환합니다.
+"""
 
 from pathlib import Path
 from typing import Any, Dict, List
@@ -10,7 +15,12 @@ logger = get_logger("txt_parser")
 
 
 class TXTParser(BaseParser):
-    """TXT 문서 파서 (UTF-8 등 텍스트 파일)"""
+    """
+    TXT(플레인 텍스트) 문서 전용 파서.
+
+    지원 확장자: .txt
+    인코딩: utf-8, utf-8-sig, cp949, euc-kr, cp1252 순으로 시도.
+    """
 
     @property
     def supported_extensions(self) -> List[str]:
@@ -18,13 +28,13 @@ class TXTParser(BaseParser):
 
     def parse(self, file_path: Path) -> Dict[str, Any]:
         """
-        TXT를 파싱하여 구조화된 데이터 반환 (RFP 분석용 동일 포맷)
+        TXT를 파싱하여 raw_text, tables(빈 목록), sections, metadata 반환.
 
         Args:
             file_path: TXT 파일 경로
 
         Returns:
-            파싱된 데이터 딕셔너리 (raw_text, tables, sections, metadata)
+            RFP 분석용 동일 포맷 딕셔너리
         """
         logger.info(f"TXT 파싱 시작: {file_path}")
 
@@ -44,7 +54,7 @@ class TXTParser(BaseParser):
         return result
 
     def extract_text(self, file_path: Path) -> str:
-        """전체 텍스트 추출 (UTF-8 우선, fallback CP949/CP1252)"""
+        """여러 인코딩을 순서대로 시도해 전체 텍스트 추출. 실패 시 UTF-8 + errors=replace."""
         encodings = ["utf-8", "utf-8-sig", "cp949", "euc-kr", "cp1252"]
         for enc in encodings:
             try:
@@ -55,11 +65,11 @@ class TXTParser(BaseParser):
         return file_path.read_text(encoding="utf-8", errors="replace")
 
     def extract_tables(self, file_path: Path) -> List[Dict[str, Any]]:
-        """TXT에는 테이블 구조가 없으므로 빈 목록 반환"""
+        """TXT에는 테이블 구조가 없으므로 항상 빈 목록 반환."""
         return []
 
     def _extract_sections(self, text: str) -> List[Dict[str, Any]]:
-        """줄 단위로 구분하여 섹션처럼 묶기 (휴리스틱)"""
+        """'제1장', '1.', '가.', '1)' 등 패턴으로 섹션 헤더를 찾아 title/content/level로 묶음."""
         sections = []
         if not text.strip():
             return sections

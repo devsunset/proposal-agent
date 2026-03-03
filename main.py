@@ -2,12 +2,19 @@
 """
 제안서 자동 생성 에이전트 (v3.0 - Impact-8 Framework)
 
-RFP 문서를 입력받아 PPTX 제안서를 자동 생성합니다.
-실제 수주 성공 제안서 분석을 기반으로 개선된 구조 적용.
+RFP 문서(PDF/DOCX/TXT/PPTX)를 입력받아 Impact-8 구조의 PPTX 제안서를 자동 생성합니다.
+실제 수주 성공 제안서 분석을 기반으로 Phase 구성·비중이 설계되어 있습니다.
 
 역할 분리:
-- LLM (Claude / Gemini / Groq): RFP 분석, 콘텐츠 생성 (.env의 LLM_PROVIDER로 선택)
-- [회사명]: PPTX 변환, Modern 스타일 디자인 적용
+- LLM (Claude / Gemini / Groq): RFP 분석, 제안서 콘텐츠 생성 (.env의 LLM_PROVIDER로 선택)
+- PPTX 레이어: ProposalContent → Modern 스타일 PPTX 변환
+
+CLI 명령:
+- generate: RFP 경로로 제안서 생성 (옵션: 프로젝트명, 발주처, 유형, 템플릿, 출력 경로 등)
+- analyze: RFP 분석만 수행 (PPTX 미생성)
+- types: 지원 제안서 유형 목록
+- templates: 사용 가능한 PPTX 템플릿 목록
+- info: Impact-8 Framework 설명
 """
 
 import asyncio
@@ -42,7 +49,11 @@ DEFAULT_TEMPLATE_BY_PROPOSAL_TYPE: dict = {}
 
 
 def _default_template_for_proposal_type(proposal_type_value: str) -> str:
-    """제안서 유형에 따른 기본 템플릿명. 없으면 ''(기본 디자인)."""
+    """
+    제안서 유형에 따른 기본 템플릿명 반환.
+
+    DEFAULT_TEMPLATE_BY_PROPOSAL_TYPE에 정의된 경우 해당 템플릿, 없으면 빈 문자열(기본 디자인).
+    """
     return DEFAULT_TEMPLATE_BY_PROPOSAL_TYPE.get(proposal_type_value, "")
 
 app = typer.Typer(

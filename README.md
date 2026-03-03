@@ -33,11 +33,15 @@ cp .env.example .env
 # LLM_PROVIDER=gemini | claude | groq 및 해당 *_API_KEY 설정
 ```
 
+```bash
 # 제안서 생성 (RFP: PDF/DOCX/TXT/PPTX)
 python main.py generate input/sample.txt -n "프로젝트명" -c "발주처명"
 
 # 제안서 유형 지정
 python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처" -t marketing_pr
+
+# RFP 분석만 수행
+python main.py analyze input/rfp.pdf
 ```
 
 ## 파이프라인
@@ -61,8 +65,8 @@ STEP 3: 콘텐츠 생성 (동일 LLM × 8 Phase)
     └─ Win Theme·KPI·슬라이드 구조
     │
     ▼
-STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator)
-    └─ output/프로젝트명_제안서.pptx
+STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator + chart/diagram_generator)
+    └─ output/프로젝트명_YYYYMMDDHHmmssfff.pptx
 ```
 
 ## Impact-8 Framework
@@ -110,7 +114,7 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator)
 ├── templates/                  # PPTX 템플릿 (지정한 파일 또는 'guide' 포함 .pptx 자동 선택, 테마로 디자인 규칙 적용)
 ├── company_data/               # 회사 정보 JSON (기본: company_profile.json)
 ├── input/                      # RFP 입력
-├── output/                     # 생성된 PPTX (프로젝트명_제안서.pptx)
+├── output/                     # 생성된 PPTX (프로젝트명_YYYYMMDDHHmmssfff.pptx)
 └── docs/                       # 가이드 문서
 ```
 
@@ -126,12 +130,9 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator)
 
 ## 템플릿·폰트/디자인 가이드
 
-제안서는 **지정한 템플릿 PPTX**(또는 `--template` 미지정 시 `templates/` 폴더에서 **이름에 'guide'가 포함된 .pptx**를 동적으로 선택)를 기준으로 생성됩니다.
-
-- **레이아웃·테마**: 선택된 PPTX의 슬라이드 레이아웃과 테마를 그대로 사용합니다.
-- **폰트·색상**: 해당 PPTX 파일의 **테마(Theme)** 에서 색상·폰트를 읽어와 제안서 작성 규칙으로 적용합니다. 별도 `design_guide.json` 없이, 템플릿 파일만 맞추면 동일한 디자인 규칙으로 생성됩니다.
-
-실행 시 `--template my_company` 처럼 템플릿을 주면 `templates/my_company.pptx`를 사용하고, 생략하면 `templates/guide_template.pptx` 또는 `guide`가 들어간 첫 .pptx가 자동 선택됩니다.
+- **템플릿 미지정** (`-T`/`--template` 생략): 템플릿 파일 없이 **빈 프레젠테이션 + 기본 디자인 시스템**으로 제안서를 생성합니다(권장).
+- **템플릿 지정** (`-T guide_template` 등): `templates/guide_template.pptx`가 있으면 해당 파일 사용. 없으면 `templates/` 내 이름에 '가이드' 또는 'guide'가 포함된 .pptx를 자동 선택. 둘 다 없으면 빈 프레젠테이션 + 기본 디자인.
+- **레이아웃·테마**: 선택된 PPTX의 슬라이드 레이아웃과 테마(색상·폰트)를 동적으로 추출해 적용합니다.
 
 ## 가이드 문서
 
@@ -144,4 +145,5 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator)
 
 ## 버전
 
-- **v3.0**: Impact-8 Framework, 다중 LLM(Claude/Gemini/Groq), TemplateManager + pptx/chart/diagram generator, get_parser_for_path, safe_output_path, Phase 2~7 병렬 생성, pytest 테스트
+- **v3.0**: Impact-8 Framework, 다중 LLM(Claude/Gemini/Groq), TemplateManager + pptx/chart/diagram generator, get_parser_for_path, safe_output_path, pytest 테스트
+- 출력 파일명: `프로젝트명_YYYYMMDDHHmmssfff.pptx` (타임스탬프 접미사로 유일 보장)

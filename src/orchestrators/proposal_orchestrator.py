@@ -1,7 +1,8 @@
 """
 제안서 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
 
-전체 워크플로우 조율: RFP 파싱 → LLM(Claude/Gemini/Groq) 분석/생성 → JSON 출력
+전체 워크플로우를 조율합니다: RFP 파싱 → 회사 데이터 로드 → RFP 분석(LLM) → 제안서 콘텐츠 생성(LLM).
+LLM은 .env의 LLM_PROVIDER에 따라 Claude/Gemini/Groq 중 하나가 사용됩니다.
 """
 
 import json
@@ -21,9 +22,10 @@ logger = get_logger("proposal_orchestrator")
 
 class ProposalOrchestrator:
     """
-    제안서 콘텐츠 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
+    제안서 콘텐츠 생성 오케스트레이터 (Impact-8 Framework).
 
-    LLM 레이어(Claude/Gemini/Groq): RFP 분석 → 콘텐츠 생성 (.env LLM_PROVIDER로 선택)
+    역할: RFP 문서 파싱 → RFP 분석(LLM) → 제안서 콘텐츠 생성(LLM) 순서로 실행하고
+    ProposalContent를 반환합니다. API 키는 생성자에서 받거나 설정에서 가져옵니다.
     """
 
     def __init__(self, api_key: Optional[str] = None):
@@ -44,7 +46,12 @@ class ProposalOrchestrator:
         self._run_diagnostics: List[Dict[str, Any]] = []  # 고도화: Phase별 로깅·진단
 
     def get_run_diagnostics(self) -> List[Dict[str, Any]]:
-        """마지막 execute()의 Phase별 진단 정보(소요시간, 슬라이드 수, JSON 성공 여부) 반환."""
+        """
+        마지막 execute() 실행 시 Phase별 진단 정보 반환.
+
+        Returns:
+            phase, phase_title, slides_count, elapsed_sec, json_ok 등을 담은 딕셔너리 목록
+        """
         return list(self._run_diagnostics)
 
     async def execute(
@@ -168,12 +175,12 @@ class ProposalOrchestrator:
             raise
 
     def _parse_document(self, file_path: Path) -> Dict[str, Any]:
-        """파일 확장자에 따라 적절한 파서 선택 (get_parser_for_path 통합)"""
+        """파일 확장자에 맞는 파서를 get_parser_for_path()로 선택한 뒤 parse() 호출."""
         parser = get_parser_for_path(file_path)
         return parser.parse(file_path)
 
     def _load_company_data(self, data_path: Path) -> Dict[str, Any]:
-        """회사 데이터 로드"""
+        """회사 정보 JSON 파일 로드. 없거나 파싱 실패 시 빈 딕셔너리 또는 예외."""
         if not data_path.exists():
             logger.warning(f"회사 데이터 파일 없음: {data_path}")
             return {}
@@ -187,7 +194,7 @@ class ProposalOrchestrator:
     def save_content_json(
         self, content: ProposalContent, output_path: Path
     ) -> None:
-        """콘텐츠를 JSON 파일로 저장"""
+        """ProposalContent를 UTF-8 JSON 파일로 저장 (indent=2, ensure_ascii=False)."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(
             content.model_dump_json(indent=2, ensure_ascii=False),
@@ -196,7 +203,7 @@ class ProposalOrchestrator:
         logger.info(f"콘텐츠 JSON 저장: {output_path}")
 
     def get_proposal_summary(self, content: ProposalContent) -> Dict[str, Any]:
-        """제안서 요약 정보 반환"""
+        """제안서 요약(프로젝트명, 발주처, 유형, 슬로건, 슬라이드 수 등) 반환."""
         teaser_slides = len(content.teaser.slides) if content.teaser else 0
         phase_slides = {
             f"Phase {p.phase_number}: {PHASE_TITLES.get(p.phase_number, getattr(p, 'phase_title', '') or '')}": len(p.slides)

@@ -1,4 +1,9 @@
-"""PDF 문서 파서"""
+"""
+PDF 문서 파서
+
+pypdf로 텍스트·메타데이터·페이지 수를 추출하고, pdfplumber로 테이블을 추출합니다.
+RFP가 PDF로 제공될 때 사용됩니다.
+"""
 
 from pathlib import Path
 from typing import Any, Dict, List
@@ -13,7 +18,12 @@ logger = get_logger("pdf_parser")
 
 
 class PDFParser(BaseParser):
-    """PDF 문서 파서"""
+    """
+    PDF 문서 전용 파서.
+
+    지원 확장자: .pdf
+    텍스트: pypdf, 테이블: pdfplumber
+    """
 
     @property
     def supported_extensions(self) -> List[str]:
@@ -21,13 +31,13 @@ class PDFParser(BaseParser):
 
     def parse(self, file_path: Path) -> Dict[str, Any]:
         """
-        PDF를 파싱하여 구조화된 데이터 반환
+        PDF를 파싱하여 raw_text, tables, page_count, metadata, sections 반환.
 
         Args:
             file_path: PDF 파일 경로
 
         Returns:
-            파싱된 데이터 딕셔너리
+            BaseParser 규격 + page_count, 섹션(휴리스틱 기반)
         """
         logger.info(f"PDF 파싱 시작: {file_path}")
 
@@ -47,7 +57,7 @@ class PDFParser(BaseParser):
         return result
 
     def extract_text(self, file_path: Path) -> str:
-        """pypdf를 사용한 텍스트 추출"""
+        """pypdf로 페이지별 텍스트 추출. 페이지 구분은 '--- 페이지 N ---' 형식으로 삽입."""
         try:
             reader = pypdf.PdfReader(file_path)
             text_parts = []
@@ -63,7 +73,7 @@ class PDFParser(BaseParser):
             raise
 
     def extract_tables(self, file_path: Path) -> List[Dict[str, Any]]:
-        """pdfplumber를 사용한 테이블 추출"""
+        """pdfplumber로 페이지별 테이블 추출. 각 테이블은 page, headers, rows 포함."""
         tables = []
 
         try:
@@ -123,9 +133,7 @@ class PDFParser(BaseParser):
         return {}
 
     def _extract_sections(self, file_path: Path) -> List[Dict[str, Any]]:
-        """
-        텍스트에서 섹션 구조 추출 (휴리스틱 기반)
-        """
+        """텍스트에서 '제1장', '1.', '가.' 등 패턴으로 섹션 헤더를 찾아 섹션 목록 구성."""
         sections = []
         text = self.extract_text(file_path)
 

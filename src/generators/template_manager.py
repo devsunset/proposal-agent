@@ -1,8 +1,9 @@
 """
 PPTX 템플릿 관리자 ([회사명])
 
-템플릿 로드, 레이아웃 관리, 디자인 시스템 제공.
-로드한 템플릿 PPTX 파일의 테마(색상·폰트)를 동적으로 읽어 제안서 작성 규칙으로 적용합니다.
+템플릿 PPTX 로드, 레이아웃 인덱스 관리, 디자인 시스템(색상·폰트·간격) 제공.
+로드한 템플릿 파일의 테마(색상·폰트)와 슬라이드 크기·플레이스홀더 위치를 동적으로 추출해
+제안서 작성 시 하드코딩 없이 적용합니다. template_name이 비어 있으면 템플릿 미사용(빈 프레젠테이션 + 기본 디자인).
 """
 
 import json
@@ -22,7 +23,12 @@ _DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
 
 class TemplateManager:
-    """PPTX 템플릿 관리자"""
+    """
+    PPTX 템플릿 관리자.
+
+    templates_dir 내 .pptx 로드, slide_layouts.json 기반 레이아웃 인덱스 제공,
+    테마 추출로 design_system(colors, fonts, spacing) 갱신, 플레이스홀더 기하(_layout_geometry) 추출.
+    """
 
     def __init__(self, templates_dir: Optional[Path] = None):
         settings = get_settings()

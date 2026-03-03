@@ -1,7 +1,9 @@
 """
 PPTX 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
 
-[회사명] 레이어: ProposalContent → PPTX 변환 (Modern 스타일)
+ProposalContent(LLM이 생성한 제안서 콘텐츠)를 받아 Modern 스타일 PPTX 파일로 변환합니다.
+티저(HOOK) → Phase 1~7 슬라이드를 순서대로 추가하고, 슬라이드 유형별로
+PPTXGenerator/ChartGenerator/DiagramGenerator를 사용합니다.
 """
 
 from pathlib import Path
@@ -19,7 +21,7 @@ logger = get_logger("pptx_orchestrator")
 
 
 def _bullets_to_text(bullets: Optional[List]) -> str:
-    """BulletPoint 리스트를 한 줄씩 문자열로 변환"""
+    """BulletPoint 리스트를 한 줄씩 이어 붙인 문자열로 변환 (2/3단 컬럼용)."""
     if not bullets:
         return ""
     return "\n".join(getattr(b, "text", str(b)) for b in bullets)
@@ -27,9 +29,11 @@ def _bullets_to_text(bullets: Optional[List]) -> str:
 
 class PPTXOrchestrator:
     """
-    PPTX 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
+    PPTX 생성 오케스트레이터 (Impact-8 Framework).
 
-    [회사명] 레이어: LLM 콘텐츠 → Modern 스타일 PPTX
+    ProposalContent를 입력받아 티저 슬라이드 → Phase별 섹션 구분자 및 콘텐츠 슬라이드를
+    추가하고, 슬라이드 유형(table, chart, timeline, comparison 등)에 따라
+    적절한 제너레이터 메서드를 호출합니다. 예외 시 콘텐츠 슬라이드로 폴백해 중단을 방지합니다.
     """
 
     def __init__(self, templates_dir: Optional[Path] = None):
@@ -125,9 +129,10 @@ class PPTXOrchestrator:
 
     def _add_teaser_slides(self, teaser: TeaserContent, content: ProposalContent) -> None:
         """
-        Phase 0: HOOK (티저) 슬라이드 추가
+        Phase 0: HOOK (티저) 슬라이드 추가.
 
-        Modern 스타일: 다크 배경, 임팩트 있는 오프닝
+        각 슬라이드 유형(teaser, title 등)에 따라 add_teaser_slide, add_title_slide 등 호출.
+        예외 시 표지 슬라이드로 대체합니다.
         """
         for slide in teaser.slides:
             slide_type = slide.slide_type.value if slide.slide_type else "teaser"
@@ -178,9 +183,7 @@ class PPTXOrchestrator:
                 )
 
     def _add_phase_slides(self, phase: PhaseContent, content: ProposalContent) -> None:
-        """
-        Phase 슬라이드 추가 (Impact-8 구조)
-        """
+        """Phase별 섹션 구분자 슬라이드 추가 후, 해당 Phase의 각 슬라이드를 _add_content_slide로 추가."""
         # 섹션 구분자 슬라이드 (첫 슬라이드가 section_divider가 아닌 경우)
         first_slide = phase.slides[0] if phase.slides else None
         if not first_slide or first_slide.slide_type.value != "section_divider":

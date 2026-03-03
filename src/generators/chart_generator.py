@@ -1,7 +1,8 @@
 """
 차트 생성기 ([회사명])
 
-타임라인, 조직도, 차트 등 시각화 요소 생성
+타임라인, 조직도, 간단한 바 차트 플레이스홀더, KPI 카드, 경쟁사 비교표, ROI 시각화 등
+슬라이드에 넣을 시각화 요소를 생성합니다. PPTXGenerator 인스턴스를 받아 해당 프레젠테이션에 슬라이드를 추가합니다.
 """
 
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
@@ -22,7 +23,12 @@ logger = get_logger("chart_generator")
 
 
 class ChartGenerator:
-    """차트/다이어그램 생성기"""
+    """
+    차트·타임라인·조직도·KPI·경쟁사 비교·ROI 시각화 생성기.
+
+    TemplateManager의 디자인 시스템(색상·폰트)을 사용하며, PPTXGenerator에 빈 슬라이드를 추가한 뒤
+    셰이프·텍스트박스를 배치합니다.
+    """
 
     def __init__(self, template_manager: TemplateManager):
         self.template_manager = template_manager

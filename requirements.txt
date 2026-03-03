@@ -1,4 +1,7 @@
-# Document Parsing
+# Proposal Agent — RFP → Impact-8 PPTX 제안서 자동 생성
+# Python 3.10+
+
+# Document Parsing (PDF, DOCX, TXT, PPTX)
 pypdf>=3.17.0
 pdfplumber>=0.10.0
 python-docx>=1.1.0
@@ -6,7 +9,7 @@ python-docx>=1.1.0
 # PPTX Generation
 python-pptx>=0.6.23
 
-# AI/LLM (Claude / Gemini / Groq)
+# AI/LLM (.env LLM_PROVIDER: claude | gemini | groq 중 1개 선택)
 anthropic>=0.39.0
 google-genai>=1.0.0
 groq>=0.4.0
@@ -25,6 +28,6 @@ loguru>=0.7.0
 # Testing
 pytest>=7.0.0
 
-# Charts (optional)
-matplotlib>=3.8.0
-Pillow>=10.0.0
+# Optional: 차트를 이미지로 삽입할 때 사용 (현재는 python-pptx 셰이프 기반 렌더링)
+# matplotlib>=3.8.0
+# Pillow>=10.0.0
