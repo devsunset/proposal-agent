@@ -44,11 +44,7 @@ class ChartGenerator:
             chart_data: ChartData 또는 dict (title, data 등)
             key_message: 핵심 메시지 (하단)
         """
-        layout_idx = generator.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = generator.prs.slide_layouts[layout_idx]
-        except (IndexError, AttributeError):
-            slide_layout = generator.prs.slide_layouts[6]
+        slide_layout = generator.get_slide_layout("blank", 6)
         slide = generator.prs.slides.add_slide(slide_layout)
         generator._add_title_textbox(slide, title)
         data = {}
@@ -79,11 +75,7 @@ class ChartGenerator:
             timeline_items: 타임라인 항목 목록
             key_message: 핵심 메시지 (하단)
         """
-        layout_idx = generator.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = generator.prs.slide_layouts[layout_idx]
-        except (IndexError, AttributeError):
-            slide_layout = generator.prs.slide_layouts[6]
+        slide_layout = generator.get_slide_layout("blank", 6)
         slide = generator.prs.slides.add_slide(slide_layout)
         generator._add_title_textbox(slide, title)
         if timeline_items:
@@ -107,11 +99,7 @@ class ChartGenerator:
             org_chart: 조직도 루트 노드
             key_message: 핵심 메시지 (하단)
         """
-        layout_idx = generator.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = generator.prs.slide_layouts[layout_idx]
-        except (IndexError, AttributeError):
-            slide_layout = generator.prs.slide_layouts[6]
+        slide_layout = generator.get_slide_layout("blank", 6)
         slide = generator.prs.slides.add_slide(slide_layout)
         generator._add_title_textbox(slide, title)
         if org_chart:

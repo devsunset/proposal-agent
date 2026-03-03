@@ -172,7 +172,7 @@ class ContentGenerator(BaseAgent):
                     "total": 8,
                     "message": f"Phase {phase_num}: {PHASE_TITLES[phase_num]} 생성 중...",
                 })
-            logger.info("Phase %s: %s 생성 중...", phase_num, PHASE_TITLES[phase_num])
+            logger.info("Phase {}: {} 생성 중...", phase_num, PHASE_TITLES[phase_num])
             phase_content = await self._generate_phase(
                 phase_num=phase_num,
                 rfp_analysis=rfp_analysis,
@@ -184,7 +184,7 @@ class ContentGenerator(BaseAgent):
                 win_themes=win_themes,
             )
             phases.append(phase_content)
-            logger.info("Phase %s: %s 생성 완료", phase_num, PHASE_TITLES[phase_num])
+            logger.info("Phase {}: {} 생성 완료", phase_num, PHASE_TITLES[phase_num])
 
         # 핵심 메시지 추출 (Executive Summary/Teaser에서)
         one_sentence_pitch, key_differentiators, slogan = self._extract_key_messages(
@@ -277,6 +277,9 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         teaser_data = self._normalize_json_keys(teaser_data, TEASER_KEY_ALIASES)
 
         slides = self._parse_slides(teaser_data.get("slides", []))
+        if not slides and teaser_data.get("main_slogan"):
+            main_slogan = teaser_data.get("main_slogan", project_name)
+            slides = [SlideContent(slide_type=SlideType.TEASER, title=main_slogan)]
 
         return TeaserContent(
             main_slogan=teaser_data.get("main_slogan", project_name),
@@ -314,6 +317,8 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         slides_data = self._extract_json(response)
         slides_data = self._normalize_json_keys(slides_data, PHASE_KEY_ALIASES)
         slides = self._parse_slides(slides_data.get("slides", []))
+        if not slides:
+            slides = [SlideContent(slide_type=SlideType.CONTENT, title=PHASE_TITLES[phase_num])]
 
         phase_content = PhaseContent(
             phase_number=phase_num,

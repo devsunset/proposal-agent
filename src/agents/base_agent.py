@@ -404,6 +404,17 @@ class BaseAgent(ABC):
                     logger.debug("JSON 추출: 마크다운 뒤 블록에서 복구")
                     return result
 
+        # 폴백: 마크다운 **key**: "value" 형태만 있을 때 (Groq 등이 JSON 대신 마크다운 반환)
+        md_key_value = re.findall(
+            r"\*\*([^*]+)\*\*\s*:\s*\"([^\"]*)\"",
+            text,
+        )
+        if md_key_value:
+            recovered = {k.strip().replace(" ", "_"): v for k, v in md_key_value}
+            if recovered:
+                logger.debug("JSON 추출: 마크다운 **key**: \"value\" 형태에서 복구")
+                return recovered
+
         snippet = (text[:300] + "..." if len(text) > 300 else text).replace("\n", " ")
         preview = (snippet[:200] + "..." if len(snippet) > 200 else snippet) if snippet else "(빈 응답)"
         logger.warning(f"JSON 추출 실패 (응답 일부: {preview}). {JSON_PARSE_FAILED_MESSAGE}")

@@ -64,6 +64,21 @@ class PPTXGenerator:
         self.prs = self.template_manager.load_template(template_name)
         return self.prs
 
+    def _safe_layout_index(self, layout_name: str, fallback_index: int = 0) -> int:
+        """템플릿 레이아웃 개수 내로 인덱스 보정 (slide layout index out of range 방지)."""
+        layout_idx = self.template_manager.get_layout_index(layout_name)
+        if not self.prs or not self.prs.slide_layouts:
+            return 0
+        n = len(self.prs.slide_layouts)
+        return min(max(0, layout_idx), n - 1)
+
+    def get_slide_layout(self, layout_name: str, fallback_index: int = 0):
+        """안전한 레이아웃 반환 (chart/diagram 생성기에서 사용)."""
+        if not self.prs:
+            raise ValueError("프레젠테이션이 초기화되지 않았습니다. create_presentation()을 먼저 호출하세요.")
+        safe_idx = self._safe_layout_index(layout_name, fallback_index)
+        return self.prs.slide_layouts[safe_idx]
+
     def add_title_slide(
         self,
         title: str,
@@ -81,13 +96,8 @@ class PPTXGenerator:
             slogan: 슬로건/한 줄 메시지 (표지용, 선택)
         """
         layout_name = "section" if is_part_divider else "title"
-        layout_idx = self.template_manager.get_layout_index(layout_name)
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[0]
-
+        safe_idx = self._safe_layout_index(layout_name, 0)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 제목 설정
@@ -135,13 +145,8 @@ class PPTXGenerator:
             subtitle: 부제목 (제목 아래 표시)
             layout_hint: 레이아웃 힌트 (선택, 미사용 시 무시)
         """
-        layout_idx = self.template_manager.get_layout_index("content")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[1]
-
+        safe_idx = self._safe_layout_index("content", 1)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 제목 (subtitle 있으면 함께 표시)
@@ -221,13 +226,8 @@ class PPTXGenerator:
                 highlight_rows = highlight_rows or table_data.get("highlight_rows")
         headers = headers or []
         rows = rows or []
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 제목 추가
@@ -311,13 +311,8 @@ class PPTXGenerator:
         """
         left_bullets = left_bullets or []
         right_bullets = right_bullets or []
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -451,13 +446,8 @@ class PPTXGenerator:
             key_message: 핵심 메시지 (하단)
         """
         columns = columns or []
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -587,13 +577,8 @@ class PPTXGenerator:
             stats: [{"value": "95%", "label": "만족도", "description": "목표 대비 +5%"}, ...]
             notes: 발표자 노트
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -685,13 +670,8 @@ class PPTXGenerator:
             columns: 열 개수 (3 또는 4)
             notes: 발표자 노트
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -803,13 +783,8 @@ class PPTXGenerator:
             author: 작성자 정보
             notes: 발표자 노트
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -878,13 +853,8 @@ class PPTXGenerator:
         티저/HOOK 슬라이드 - 임팩트 있는 오프닝
         Modern 스타일: 다크 배경, 큰 타이포그래피
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 다크 배경
@@ -947,13 +917,8 @@ class PPTXGenerator:
         섹션 구분 슬라이드 - Phase 번호와 제목
         Modern 스타일: 왼쪽에 큰 숫자, 오른쪽에 제목
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 다크 배경
@@ -1026,13 +991,8 @@ class PPTXGenerator:
         """
         핵심 메시지 슬라이드 - 중앙 정렬된 임팩트 메시지
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 배경 (그라데이션 효과는 단색으로 대체)
@@ -1099,13 +1059,8 @@ class PPTXGenerator:
         AS-IS / TO-BE 비교 슬라이드
         Modern 스타일: 좌우 분할, 시각적 대비
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -1224,13 +1179,8 @@ class PPTXGenerator:
         Modern 스타일: 깔끔한 번호 매기기, 현재 위치 강조
         """
         items = items or []
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -1297,13 +1247,8 @@ class PPTXGenerator:
         콘텐츠 예시 슬라이드 - 마케팅/PR용
         Modern 스타일: 카드형 레이아웃, 이미지 플레이스홀더
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -1430,13 +1375,8 @@ class PPTXGenerator:
         채널 전략 슬라이드 - 채널별 역할/KPI
         Modern 스타일: 채널 아이콘, 역할, KPI 표시
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -1596,13 +1536,8 @@ class PPTXGenerator:
         캠페인 슬라이드 - 캠페인 개요 및 활동
         Modern 스타일: 헤더 배너, 활동 타임라인
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -1727,13 +1662,8 @@ class PPTXGenerator:
         예산 슬라이드 - 투자 비용 테이블
         Modern 스타일: 깔끔한 테이블, 총계 강조
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -1826,13 +1756,8 @@ class PPTXGenerator:
         케이스 스터디 슬라이드 - 수행 실적
         Modern 스타일: 프로젝트 이미지 + 성과 KPI
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 메인 제목
@@ -1991,12 +1916,8 @@ class PPTXGenerator:
             kpis: [{"metric": "KPI명", "target": "목표값", "basis": "산출근거"}, ...]
             why_us_points: ["포인트1", "포인트2", ...]
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 왼쪽 액센트 바
@@ -2122,12 +2043,8 @@ class PPTXGenerator:
             call_to_action: ["10개월간 브랜드 인지도 +20%p 달성", ...]
             contact_info: {"name": "담당자명", "phone": "전화번호", "email": "이메일"}
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 왼쪽 액센트 바
@@ -2256,12 +2173,8 @@ class PPTXGenerator:
         """
         섹션 구분 슬라이드 (Win Theme 배지 포함)
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
-
+        safe_idx = self._safe_layout_index("blank", 6)
+        slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 다크 배경

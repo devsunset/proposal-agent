@@ -52,11 +52,7 @@ class DiagramGenerator:
             bullets: BulletPoint 리스트 또는 단계 텍스트 리스트
             key_message: 핵심 메시지 (하단)
         """
-        layout_idx = generator.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = generator.prs.slide_layouts[layout_idx]
-        except (IndexError, AttributeError):
-            slide_layout = generator.prs.slide_layouts[6]
+        slide_layout = generator.get_slide_layout("blank", 6)
         slide = generator.prs.slides.add_slide(slide_layout)
         generator._add_title_textbox(slide, title)
         steps = []

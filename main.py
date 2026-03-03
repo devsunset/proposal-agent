@@ -232,11 +232,14 @@ async def _generate_async_impl(
 ):
     """제안서 생성 실제 로직"""
 
-    # Phase 1: 콘텐츠 생성 (설정된 LLM)
+    STEP_SEP = "-------------"
+
+    # Step 1: 콘텐츠 생성 (설정된 LLM)
     _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
         get_settings().llm_provider, "LLM"
     )
-    console.print(f"[bold cyan]Phase 1: 콘텐츠 생성 ({_llm} - Impact-8)[/bold cyan]")
+    console.print(STEP_SEP)
+    console.print(f"[bold cyan]Step 1: 콘텐츠 생성 ({_llm} - Impact-8)[/bold cyan]")
 
     proposal_orchestrator = ProposalOrchestrator(api_key=api_key)
 
@@ -261,7 +264,7 @@ async def _generate_async_impl(
             progress_callback=update_progress,
         )
 
-    console.print("[green]Phase 1 완료[/green]")
+    console.print("[green]Step 1 완료[/green]")
 
     # 콘텐츠 요약 출력
     summary = proposal_orchestrator.get_proposal_summary(content)
@@ -277,8 +280,9 @@ async def _generate_async_impl(
         proposal_orchestrator.save_content_json(content, json_path)
         console.print(f"[dim]JSON 저장: {json_path}[/dim]")
 
-    # Phase 2: PPTX 생성 ([회사명])
-    console.print("[bold cyan]Phase 2: PPTX 생성 (Modern 스타일)[/bold cyan]")
+    # Step 2: PPTX 생성 ([회사명])
+    console.print(STEP_SEP)
+    console.print("[bold cyan]Step 2: PPTX 생성 (Modern 스타일)[/bold cyan]")
 
     pptx_orchestrator = PPTXOrchestrator()
 
@@ -300,7 +304,7 @@ async def _generate_async_impl(
             progress_callback=update_progress,
         )
 
-    console.print("[green]Phase 2 완료[/green]")
+    console.print("[green]Step 2 완료[/green]")
 
     # 결과 출력
     total_slides = summary["total_slides"]
