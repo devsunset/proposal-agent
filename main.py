@@ -309,7 +309,12 @@ async def _generate_async_impl(
         _last_phase_pptx = [-1]
         update_progress = _make_progress_callback(console, progress, task, _last_phase_pptx)
 
-        output_path = safe_output_path(output_dir, final_project_name, suffix="_제안서", extension=".pptx")
+        # 유니크 파일명: 제목_접미사.pptx (접미사 = YYYYMMDDHHmmssfff)
+        _now = datetime.now()
+        _ts = _now.strftime("%Y%m%d%H%M%S") + f"{_now.microsecond // 1000:03d}"
+        output_path = safe_output_path(
+            output_dir, final_project_name, suffix=f"_{_ts}", extension=".pptx"
+        )
 
         pptx_orchestrator.execute(
             content=content,
