@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, Optional
 from ..parsers import get_parser_for_path
 from ..agents.rfp_analyzer import RFPAnalyzer
 from ..agents.content_generator import ContentGenerator
-from ..schemas.proposal_schema import ProposalContent, ProposalType
+from ..schemas.proposal_schema import ProposalContent, ProposalType, PHASE_TITLES
 from ..schemas.rfp_schema import RFPAnalysis
 from ..utils.logger import get_logger
 from config.settings import get_settings
@@ -191,7 +191,7 @@ class ProposalOrchestrator:
         """제안서 요약 정보 반환"""
         teaser_slides = len(content.teaser.slides) if content.teaser else 0
         phase_slides = {
-            f"Phase {p.phase_number}": len(p.slides)
+            f"Phase {p.phase_number}: {PHASE_TITLES.get(p.phase_number, getattr(p, 'phase_title', '') or '')}": len(p.slides)
             for p in content.phases
         }
         total_slides = teaser_slides + sum(phase_slides.values())
