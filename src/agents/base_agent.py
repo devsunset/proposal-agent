@@ -378,6 +378,32 @@ class BaseAgent(ABC):
             if result is not None and isinstance(result, dict):
                 return result
 
+        # 폴백: 마크다운 뒤에 JSON이 올 때. "project_name" 등 키가 보이는 구간에서 { } 블록 찾기
+        for anchor in ('"project_name"', '"client_name"', '"project_overview"', '"project_type"'):
+            idx = text.find(anchor)
+            if idx == -1:
+                continue
+            # anchor 앞에서 가장 가까운 { 찾기 (같은 줄 또는 최근)
+            start = text.rfind("{", 0, idx + 1)
+            if start == -1:
+                continue
+            depth = 0
+            end = start
+            for i, c in enumerate(text[start:], start):
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i
+                        break
+            if depth == 0 and end > start:
+                block = text[start : end + 1]
+                result = _parse(block)
+                if result is not None and isinstance(result, dict) and len(result) >= 2:
+                    logger.debug("JSON 추출: 마크다운 뒤 블록에서 복구")
+                    return result
+
         snippet = (text[:300] + "..." if len(text) > 300 else text).replace("\n", " ")
         preview = (snippet[:200] + "..." if len(snippet) > 200 else snippet) if snippet else "(빈 응답)"
         logger.warning(f"JSON 추출 실패 (응답 일부: {preview}). {JSON_PARSE_FAILED_MESSAGE}")

@@ -50,6 +50,8 @@ class RFPAnalyzer(BaseAgent):
         )[:5000]
 
         user_message = f"""
+중요: 응답은 반드시 유효한 JSON만 포함해야 합니다. 마크다운(##, ###), 목록(-), 설명 없이, 오직 ```json 으로 감싼 코드 블록 한 개만 출력하세요.
+
 다음 RFP(제안요청서) 문서를 분석해주세요.
 
 ## 문서 텍스트
@@ -149,8 +151,19 @@ class RFPAnalyzer(BaseAgent):
                 {"step": 3, "total": 3, "message": "분석 결과 정리 중..."}
             )
 
-        # JSON 파싱
+        # JSON 파싱 (실패 시 1회 재시도: 동일 RFP + JSON만 출력 재요청)
         analysis_data = self._extract_json(response)
+        if not analysis_data:
+            logger.warning("RFP 분석 1차 응답에서 JSON을 찾지 못함. JSON만 출력하도록 1회 재시도.")
+            retry_user = (
+                user_message.rstrip()
+                + "\n\n[재요청] 위 RFP를 분석한 결과를 반드시 유효한 JSON만 출력하세요. "
+                "마크다운(##, -), 설명 문단 없이 오직 ```json 으로 시작하는 코드 블록 한 개만 출력하세요."
+            )
+            response = self._call_llm(
+                system_prompt, retry_user, max_tokens=get_settings().llm_max_tokens_default
+            )
+            analysis_data = self._extract_json(response)
         if not analysis_data:
             from .base_agent import JSON_PARSE_FAILED_MESSAGE
             raise ValueError(JSON_PARSE_FAILED_MESSAGE)
