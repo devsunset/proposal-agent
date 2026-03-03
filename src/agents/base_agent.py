@@ -81,7 +81,7 @@ class BaseAgent(ABC):
         self,
         system_prompt: str,
         user_message: str,
-        max_tokens: int = 4096,
+        max_tokens: Optional[int] = None,
     ) -> str:
         """
         LLM API 호출 (Claude / Gemini / Groq)
@@ -89,11 +89,13 @@ class BaseAgent(ABC):
         Args:
             system_prompt: 시스템 프롬프트
             user_message: 사용자 메시지
-            max_tokens: 최대 출력 토큰 수
+            max_tokens: 최대 출력 토큰 수 (None이면 .env LLM_MAX_TOKENS 사용)
 
         Returns:
             모델 응답 텍스트
         """
+        if max_tokens is None:
+            max_tokens = get_settings().llm_max_tokens_default
         if self._use_claude:
             return self._call_claude(system_prompt, user_message, max_tokens)
         if self._use_groq:
@@ -104,13 +106,13 @@ class BaseAgent(ABC):
         self,
         system_prompt: str,
         user_message: str,
-        max_tokens: int = 4096,
+        max_tokens: int,
     ) -> str:
         """Claude (Anthropic) API 호출 (재시도·로깅 적용)"""
         settings = get_settings()
-        max_retries = getattr(settings, "llm_retry_count", 3)
-        base_delay = getattr(settings, "llm_retry_base_delay_seconds", 5.0)
-        delay_sec = settings.gemini_delay_seconds
+        max_retries = settings.llm_retry_count
+        base_delay = settings.llm_retry_base_delay_seconds
+        delay_sec = settings.llm_delay_seconds
         last_error: Optional[Exception] = None
         for attempt in range(max_retries):
             t0 = time.perf_counter()
@@ -168,19 +170,17 @@ class BaseAgent(ABC):
         self,
         system_prompt: str,
         user_message: str,
-        max_tokens: int = 4096,
+        max_tokens: int,
     ) -> str:
         """Groq API 호출 (413/429 대응: 입력 길이 제한·재시도·로깅)"""
         settings = get_settings()
-        max_chars = getattr(settings, "groq_max_user_message_chars", 0) or 0
+        max_chars = settings.groq_max_user_message_chars or 0
         if max_chars > 0 and len(user_message) > max_chars:
             user_message = user_message[:max_chars] + "\n\n... (길이 제한으로 일부 생략됨)"
             logger.debug("Groq user_message %d자로 제한 적용", max_chars)
-        max_retries = getattr(settings, "llm_retry_count", 3)
-        base_delay = getattr(settings, "llm_retry_base_delay_seconds", 5.0)
-        delay_sec = getattr(settings, "groq_delay_seconds", 0) or 0
-        if delay_sec <= 0:
-            delay_sec = settings.gemini_delay_seconds
+        max_retries = settings.llm_retry_count
+        base_delay = settings.llm_retry_base_delay_seconds
+        delay_sec = settings.llm_delay_seconds
         last_error: Optional[Exception] = None
         for attempt in range(max_retries):
             t0 = time.perf_counter()
@@ -238,12 +238,12 @@ class BaseAgent(ABC):
         self,
         system_prompt: str,
         user_message: str,
-        max_tokens: int = 4096,
+        max_tokens: int,
     ) -> str:
         """Gemini API 호출 (설정 기반 재시도·로깅)"""
         settings = get_settings()
-        max_retries = getattr(settings, "llm_retry_count", 3)
-        base_delay = getattr(settings, "llm_retry_base_delay_seconds", 5.0)
+        max_retries = settings.llm_retry_count
+        base_delay = settings.llm_retry_base_delay_seconds
         types = self._genai_types
         for attempt in range(max_retries):
             t0 = time.perf_counter()
@@ -270,7 +270,7 @@ class BaseAgent(ABC):
                     len(result),
                     elapsed,
                 )
-                delay_sec = settings.gemini_delay_seconds
+                delay_sec = settings.llm_delay_seconds
                 if delay_sec > 0:
                     time.sleep(delay_sec)
                 return result

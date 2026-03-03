@@ -29,26 +29,25 @@ class Settings(BaseModel):
     # API (Gemini)
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
-    # 429 방지: API 호출 간 대기(초). 무료 한도일 때 5~10 권장
-    gemini_delay_seconds: float = float(os.getenv("GEMINI_DELAY_SECONDS", "8"))
 
     # API (Groq, 무료 티어 한도 넉넉함)
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
     # 413(Request too large) 방지: user 메시지 최대 문자 수. 초과 시 잘라서 전송 (0이면 제한 없음)
     groq_max_user_message_chars: int = int(os.getenv("GROQ_MAX_USER_MESSAGE_CHARS", "0") or "0")
-    # Groq 호출 간 대기(초). 429/한도 완화용 (0이면 GEMINI_DELAY_SECONDS 사용)
-    groq_delay_seconds: float = float(os.getenv("GROQ_DELAY_SECONDS", "0") or "0")
 
     # 로그 레벨 (DEBUG | INFO | WARNING | ERROR)
     log_level: str = (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
 
-    # LLM 공통: 재시도·토큰 (429/일시 오류 대응)
-    llm_max_tokens_default: int = int(os.getenv("LLM_MAX_TOKENS", "4096") or "4096")
+    # LLM 공통: 재시도·토큰·호출 간 대기 (429/일시 오류 대응)
+    # 응답 최대 토큰. 클 수수록 더 긴·상세한 응답 가능 (4096~16384 권장, 모델 한도 내)
+    llm_max_tokens_default: int = int(os.getenv("LLM_MAX_TOKENS", "8192") or "8192")
     llm_retry_count: int = int(os.getenv("LLM_RETRY_COUNT", "3") or "3")
     llm_retry_base_delay_seconds: float = float(os.getenv("LLM_RETRY_BASE_DELAY", "5") or "5")
+    # API 호출 간 대기(초). Gemini/Groq 공통. 429 방지용 (0=대기 없음, 무료 한도일 때 5~10 권장)
+    llm_delay_seconds: float = float(os.getenv("LLM_DELAY_SECONDS", "8") or "8")
 
-    @field_validator("gemini_delay_seconds", "groq_delay_seconds", "llm_retry_base_delay_seconds")
+    @field_validator("llm_delay_seconds", "llm_retry_base_delay_seconds")
     @classmethod
     def validate_delay_non_negative(cls, v: float) -> float:
         if v < 0:

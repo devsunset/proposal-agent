@@ -23,6 +23,9 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+# .env를 먼저 로드해야 config.settings가 올바른 LLM_PROVIDER를 읽음
+load_dotenv()
+
 from config.settings import get_settings
 from config.proposal_types import ProposalType as ConfigProposalType, get_type_display_name
 from src.orchestrators.proposal_orchestrator import ProposalOrchestrator
@@ -31,7 +34,6 @@ from src.utils.logger import LOG_SEPARATOR, setup_logger
 from src.utils.path_utils import safe_filename, safe_output_path
 from src.schemas.proposal_schema import PHASE_TITLES
 
-load_dotenv()
 setup_logger()  # LOG_LEVEL 환경 변수 사용 (기본 INFO)
 
 app = typer.Typer(
@@ -487,7 +489,7 @@ def types():
 @app.command()
 def templates():
     """사용 가능한 PPTX 템플릿 목록"""
-    templates_dir = Path("templates")
+    templates_dir = get_settings().templates_dir
 
     console.print("\n[bold]디자인 스타일:[/bold]")
     console.print("  - [cyan]guide_template[/cyan] (기본) - 가이드 템플릿 (templates/ 내 guide 포함 .pptx 또는 빈 프레젠테이션)")

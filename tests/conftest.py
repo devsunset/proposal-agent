@@ -13,13 +13,12 @@ def mock_settings(monkeypatch):
     mock.llm_provider = "gemini"
     mock.prompts_dir = Path(__file__).parent.parent / "config" / "prompts"
     mock.gemini_api_key = "test-key-for-unit-tests"
-    mock.gemini_delay_seconds = 0
+    mock.llm_delay_seconds = 0
     mock.anthropic_api_key = ""
     mock.groq_api_key = ""
     mock.llm_retry_count = 1
     mock.llm_retry_base_delay_seconds = 0.1
     mock.groq_max_user_message_chars = 0
-    mock.groq_delay_seconds = 0
     mock.llm_max_tokens_default = 4096
     monkeypatch.setattr("config.settings.get_settings", lambda: mock)
     return mock

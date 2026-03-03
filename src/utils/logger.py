@@ -20,9 +20,10 @@ def log_stage(stage_name: Optional[str] = None) -> None:
 
 
 def setup_logger(level: Optional[str] = None) -> None:
-    """로거 설정. level이 없으면 환경 변수 LOG_LEVEL 사용 (기본 INFO)."""
+    """로거 설정. level이 없으면 config.settings(LOG_LEVEL) 사용 (기본 INFO)."""
     if level is None:
-        level = (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
+        from config.settings import get_settings
+        level = get_settings().log_level
     logger.remove()
     logger.add(
         sys.stderr,

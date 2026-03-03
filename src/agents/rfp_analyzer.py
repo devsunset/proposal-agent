@@ -3,6 +3,7 @@
 import json
 from typing import Any, Callable, Dict, Optional
 
+from config.settings import get_settings
 from .base_agent import BaseAgent
 from ..schemas.rfp_schema import RFPAnalysis
 from ..utils.logger import get_logger
@@ -138,8 +139,10 @@ class RFPAnalyzer(BaseAgent):
                 {"step": 2, "total": 3, "message": f"{_llm_label} 분석 수행 중..."}
             )
 
-        # LLM API 호출
-        response = self._call_llm(system_prompt, user_message, max_tokens=8192)
+        # LLM API 호출 (.env LLM_MAX_TOKENS로 응답 길이 조절, 기본 8192)
+        response = self._call_llm(
+            system_prompt, user_message, max_tokens=get_settings().llm_max_tokens_default
+        )
 
         if progress_callback:
             progress_callback(

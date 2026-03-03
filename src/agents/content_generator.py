@@ -9,6 +9,7 @@ import asyncio
 import json
 from typing import Any, Callable, Dict, List, Optional
 
+from config.settings import get_settings
 from .base_agent import BaseAgent
 from ..schemas.proposal_schema import (
     BulletPoint,
@@ -261,7 +262,8 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 4. 마지막에 표지 슬라이드 포함
 """
 
-        response = self._call_llm(system_prompt, user_message, max_tokens=4096)
+        max_tokens = get_settings().llm_max_tokens_default
+        response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
         teaser_data = self._extract_json(response)
 
         slides = self._parse_slides(teaser_data.get("slides", []))
@@ -295,7 +297,9 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
             project_name, client_name, proposal_type, weight, win_themes
         )
 
-        max_tokens = 16384 if phase_num == 4 else 8192
+        # Phase 4(ACTION PLAN)는 분량이 많아 상한만 더 여유 있게 (설정값 또는 16384)
+        default_tokens = get_settings().llm_max_tokens_default
+        max_tokens = max(default_tokens, 16384) if phase_num == 4 else default_tokens
         response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
         slides_data = self._extract_json(response)
         slides = self._parse_slides(slides_data.get("slides", []))
