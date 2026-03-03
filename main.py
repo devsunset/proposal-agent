@@ -348,8 +348,10 @@ async def _generate_async_impl(
 
 def _make_progress_callback(console, progress, task, last_phase_ref):
     """
-    Step 1(콘텐츠 생성)용. Phase 전환 시 스피너를 먼저 현재 Phase로 갱신한 뒤 줄바꿈·패널 출력.
-    (갱신을 먼저 해야 패널 아래에 그려지는 스피너가 이전 단계 문구가 아닌 현재 Phase로 나옴)
+    Step 1(콘텐츠 생성)용. Phase 전환 시:
+    1) 먼저 줄바꿈으로 Progress 라이브 라인 종료
+    2) 스피너를 현재 Phase로 갱신 + refresh로 즉시 반영
+    3) 해당 Phase 패널 출력 → 그 아래에는 해당 Phase 로그만 나오게 (loguru는 logger에서 선행 \\n으로 분리)
     """
     def update_progress(p):
         msg = p.get("message", "처리 중...")
@@ -359,10 +361,13 @@ def _make_progress_callback(console, progress, task, last_phase_ref):
             if len(tok) == 2 and tok[1].isdigit():
                 n = int(tok[1])
                 if 0 <= n <= 7 and n != last_phase_ref[0]:
-                    # 1) 스피너를 먼저 현재 Phase로 갱신 → 패널 아래에 그려질 때 이미 올바른 문구로 나옴
-                    progress.update(task, description=msg)
-                    # 2) 줄바꿈 후 해당 Phase 패널 출력
+                    # 1) 줄바꿈으로 이전 Progress 라이브 라인 종료 → loguru가 그 줄에 붙지 않게
                     console.print()
+                    # 2) 스피너를 현재 Phase로 갱신하고 즉시 리프레시 (패널 아래에 올바른 문구로 그려지게)
+                    progress.update(task, description=msg, refresh=True)
+                    if getattr(progress, "refresh", None):
+                        progress.refresh()
+                    # 3) 해당 Phase 패널 출력
                     console.print(
                         Panel(
                             "",
@@ -372,14 +377,14 @@ def _make_progress_callback(console, progress, task, last_phase_ref):
                     )
                     last_phase_ref[0] = n
                     return
-        progress.update(task, description=msg)
+        progress.update(task, description=msg, refresh=True)
     return update_progress
 
 
 def _make_pptx_progress_callback(console, progress, task, last_phase_ref):
     """
-    Step 2(PPTX 생성)용. Phase 전환 시 스피너를 "PPTX 생성 중..."으로 먼저 갱신한 뒤 패널 출력.
-    패널 아래에는 해당 Phase 슬라이드 생성 완료 로그만 나오게 함.
+    Step 2(PPTX 생성)용. Phase 전환 시 줄바꿈 → 스피너 갱신(refresh) → 패널 출력.
+    패널 아래에는 해당 Phase 슬라이드 생성 완료 로그만 나오게 (loguru 선행 \\n으로 분리).
     """
     PPTX_MSG = "PPTX 생성 중..."
 
@@ -391,10 +396,10 @@ def _make_pptx_progress_callback(console, progress, task, last_phase_ref):
             if len(tok) == 2 and tok[1].isdigit():
                 n = int(tok[1])
                 if 0 <= n <= 7 and n != last_phase_ref[0]:
-                    # 1) 스피너를 먼저 공통 문구로 갱신 → 패널 아래에 이전 Phase 문구가 안 나오게
-                    progress.update(task, description=PPTX_MSG)
-                    # 2) 줄바꿈 후 해당 Phase 패널 출력
                     console.print()
+                    progress.update(task, description=PPTX_MSG, refresh=True)
+                    if getattr(progress, "refresh", None):
+                        progress.refresh()
                     console.print(
                         Panel(
                             "",
@@ -404,7 +409,7 @@ def _make_pptx_progress_callback(console, progress, task, last_phase_ref):
                     )
                     last_phase_ref[0] = n
                     return
-        progress.update(task, description=msg if msg else PPTX_MSG)
+        progress.update(task, description=msg if msg else PPTX_MSG, refresh=True)
     return update_progress
 
 

@@ -31,9 +31,19 @@ def setup_logger(level: Optional[str] = None) -> None:
         from config.settings import get_settings
         level = get_settings().log_level
     logger.remove()
+    fmt = "<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>"
+    # Rich Progress와 같은 터미널에 쓸 때, 로그가 Progress 라이브 라인(\\n 없음) 뒤에 붙지 않도록 매 로그 앞에 줄바꿈
+    def _sink_newline_first(message):
+        try:
+            if sys.stderr.isatty():
+                sys.stderr.write("\n")
+        except Exception:
+            pass
+        sys.stderr.write(message)
+        sys.stderr.flush()
     logger.add(
-        sys.stderr,
-        format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>",
+        _sink_newline_first,
+        format=fmt,
         level=level,
         colorize=True,
     )
