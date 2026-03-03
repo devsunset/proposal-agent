@@ -606,26 +606,32 @@ Phase {phase_num}: {self.PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 �
                 # bullets 파싱
                 bullets = self._parse_bullets(slide_data.get("bullets"))
 
-                # KPIs 파싱 (SlideContent.kpis는 List[KPIItem]만 허용 → 항상 KPIItem으로 변환)
+                # KPIs 파싱 (SlideContent.kpis는 List[KPIItem]만 허용 → 항상 str로 정규화 후 KPIItem 생성)
                 kpis = None
                 if slide_data.get("kpis"):
                     kpis = []
                     for k in slide_data["kpis"]:
-                        if isinstance(k, dict):
-                            kpis.append(KPIItem(
-                                metric=k.get("metric", ""),
-                                target=k.get("target", ""),
-                                baseline=k.get("baseline"),
-                                improvement=k.get("improvement"),
-                            ))
-                        else:
-                            # KPIWithBasis 등 모델 인스턴스 → KPIItem으로 변환
-                            kpis.append(KPIItem(
-                                metric=getattr(k, "metric", ""),
-                                target=getattr(k, "target", ""),
-                                baseline=getattr(k, "baseline", None),
-                                improvement=getattr(k, "improvement", None),
-                            ))
+                        try:
+                            if isinstance(k, dict):
+                                kpis.append(KPIItem(
+                                    metric=str(k.get("metric", "") or ""),
+                                    target=str(k.get("target", "") or ""),
+                                    baseline=str(k["baseline"]) if k.get("baseline") is not None else None,
+                                    improvement=str(k["improvement"]) if k.get("improvement") is not None else None,
+                                ))
+                            else:
+                                # KPIWithBasis 등 모델 인스턴스 → KPIItem으로 변환 (숫자 → str)
+                                bl = getattr(k, "baseline", None)
+                                im = getattr(k, "improvement", None)
+                                kpis.append(KPIItem(
+                                    metric=str(getattr(k, "metric", "") or ""),
+                                    target=str(getattr(k, "target", "") or ""),
+                                    baseline=str(bl) if bl is not None else None,
+                                    improvement=str(im) if im is not None else None,
+                                ))
+                        except Exception as e:
+                            logger.debug("KPI 항목 스킵: %s", e)
+                            continue
 
                 # Competitor Comparisons 파싱
                 competitor_comparison = None

@@ -144,32 +144,50 @@ class PPTXOrchestrator:
         for slide in teaser.slides:
             slide_type = slide.slide_type.value if slide.slide_type else "teaser"
 
-            if slide_type == "teaser":
-                # 티저 슬라이드 (다크 배경, 큰 텍스트)
-                headline = slide.key_message or slide.title
-                subheadline = slide.subtitle or ""
-                self.generator.add_teaser_slide(
-                    headline=headline,
-                    subheadline=subheadline,
-                    background_color="dark_blue",
-                    notes=slide.notes or "",
+            try:
+                if slide_type == "teaser":
+                    # 티저 슬라이드 (다크 배경, 큰 텍스트)
+                    headline = slide.key_message or slide.title
+                    subheadline = slide.subtitle or ""
+                    self.generator.add_teaser_slide(
+                        headline=headline,
+                        subheadline=subheadline,
+                        background_color="dark_blue",
+                        notes=slide.notes or "",
+                    )
+                elif slide_type == "title":
+                    # 표지 슬라이드
+                    subtitle_parts = [content.client_name]
+                    if content.submission_date:
+                        subtitle_parts.append(content.submission_date)
+                    subtitle_parts.append(content.company_name)
+                    slogan = getattr(teaser, "main_slogan", None) or getattr(content, "slogan", None)
+
+                    self.generator.add_title_slide(
+                        title=content.project_name,
+                        subtitle=" | ".join(subtitle_parts),
+                        slogan=slogan,
+                        is_part_divider=False,
+                    )
+                else:
+                    # 기타 슬라이드
+                    self._add_content_slide(slide)
+            except (TypeError, AttributeError, ValueError) as e:
+                logger.warning(
+                    "오프닝 슬라이드(%s) 처리 실패(%s), 표지로 대체: %s",
+                    slide_type,
+                    type(e).__name__,
+                    str(e)[:200],
                 )
-            elif slide_type == "title":
-                # 표지 슬라이드
                 subtitle_parts = [content.client_name]
                 if content.submission_date:
                     subtitle_parts.append(content.submission_date)
                 subtitle_parts.append(content.company_name)
-
                 self.generator.add_title_slide(
                     title=content.project_name,
                     subtitle=" | ".join(subtitle_parts),
-                    slogan=teaser.main_slogan,
                     is_part_divider=False,
                 )
-            else:
-                # 기타 슬라이드
-                self._add_content_slide(slide)
 
     def _add_phase_slides(self, phase: PhaseContent, content: ProposalContent) -> None:
         """
@@ -194,268 +212,282 @@ class PPTXOrchestrator:
         phase_number: Optional[int] = None
     ) -> None:
         """
-        개별 슬라이드 추가 (슬라이드 유형에 따라 분기)
+        개별 슬라이드 추가 (슬라이드 유형에 따라 분기).
+        예외 시 콘텐츠 슬라이드로 폴백하여 PPTX 생성이 중단되지 않도록 함.
         """
         slide_type = slide.slide_type.value if slide.slide_type else "content"
 
-        if slide_type == "section_divider":
-            self.generator.add_section_divider(
-                phase_number=phase_number or 0,
-                phase_title=slide.title,
-                phase_subtitle=slide.subtitle or "",
-                notes=slide.notes or "",
-            )
-
-        elif slide_type == "content":
+        def _fallback_content():
             self.generator.add_content_slide(
                 title=slide.title,
                 subtitle=slide.subtitle,
                 bullets=slide.bullets,
                 key_message=slide.key_message,
-                layout_hint=slide.layout_hint,
             )
 
-        elif slide_type == "two_column":
-            self.generator.add_two_column_slide(
-                title=slide.title,
-                left_title=slide.left_title or "",
-                right_title=slide.right_title or "",
-                left_bullets=slide.left_content or [],
-                right_bullets=slide.right_content or [],
-                key_message=slide.key_message,
-            )
-
-        elif slide_type == "three_column":
-            columns = [
-                {"title": slide.left_title or "", "content": _bullets_to_text(slide.left_content)},
-                {"title": slide.center_title or "", "content": _bullets_to_text(slide.center_content)},
-                {"title": slide.right_title or "", "content": _bullets_to_text(slide.right_content)},
-            ]
-            self.generator.add_three_column_slide(
-                title=slide.title,
-                columns=columns,
-                key_message=slide.key_message,
-            )
-
-        elif slide_type == "table":
-            if slide.table and (getattr(slide.table, "rows", None) or (isinstance(slide.table, dict) and slide.table.get("rows"))):
-                self.generator.add_table_slide(
-                    title=slide.title,
-                    table_data=slide.table,
-                    key_message=slide.key_message,
+        try:
+            if slide_type == "section_divider":
+                self.generator.add_section_divider(
+                    phase_number=phase_number or 0,
+                    phase_title=slide.title,
+                    phase_subtitle=slide.subtitle or "",
+                    notes=slide.notes or "",
                 )
-            else:
+
+            elif slide_type == "content":
                 self.generator.add_content_slide(
                     title=slide.title,
                     subtitle=slide.subtitle,
                     bullets=slide.bullets,
                     key_message=slide.key_message,
+                    layout_hint=slide.layout_hint,
                 )
 
-        elif slide_type == "chart":
-            self.chart_generator.add_chart_slide(
-                generator=self.generator,
-                title=slide.title,
-                chart_data=slide.chart,
-                key_message=slide.key_message,
+            elif slide_type == "two_column":
+                self.generator.add_two_column_slide(
+                    title=slide.title,
+                    left_title=slide.left_title or "",
+                    right_title=slide.right_title or "",
+                    left_bullets=slide.left_content or [],
+                    right_bullets=slide.right_content or [],
+                    key_message=slide.key_message,
+                )
+
+            elif slide_type == "three_column":
+                columns = [
+                    {"title": slide.left_title or "", "content": _bullets_to_text(slide.left_content)},
+                    {"title": slide.center_title or "", "content": _bullets_to_text(slide.center_content)},
+                    {"title": slide.right_title or "", "content": _bullets_to_text(slide.right_content)},
+                ]
+                self.generator.add_three_column_slide(
+                    title=slide.title,
+                    columns=columns,
+                    key_message=slide.key_message,
+                )
+
+            elif slide_type == "table":
+                if slide.table and (getattr(slide.table, "rows", None) or (isinstance(slide.table, dict) and slide.table.get("rows"))):
+                    self.generator.add_table_slide(
+                        title=slide.title,
+                        table_data=slide.table,
+                        key_message=slide.key_message,
+                    )
+                else:
+                    self.generator.add_content_slide(
+                        title=slide.title,
+                        subtitle=slide.subtitle,
+                        bullets=slide.bullets,
+                        key_message=slide.key_message,
+                    )
+
+            elif slide_type == "chart":
+                self.chart_generator.add_chart_slide(
+                    generator=self.generator,
+                    title=slide.title,
+                    chart_data=slide.chart,
+                    key_message=slide.key_message,
+                )
+
+            elif slide_type == "timeline":
+                self.chart_generator.add_timeline_slide(
+                    generator=self.generator,
+                    title=slide.title,
+                    timeline_items=slide.timeline,
+                    key_message=slide.key_message,
+                )
+
+            elif slide_type == "org_chart":
+                self.chart_generator.add_org_chart_slide(
+                    generator=self.generator,
+                    title=slide.title,
+                    org_chart=slide.org_chart,
+                    key_message=slide.key_message,
+                )
+
+            elif slide_type == "comparison":
+                # 비교 슬라이드 (AS-IS / TO-BE)
+                as_is = {"title": "AS-IS (현재)", "items": []}
+                to_be = {"title": "TO-BE (제안)", "items": []}
+
+                if slide.comparison:
+                    if hasattr(slide.comparison, 'as_is'):
+                        as_is["items"] = slide.comparison.as_is if isinstance(slide.comparison.as_is, list) else [slide.comparison.as_is]
+                    if hasattr(slide.comparison, 'to_be'):
+                        to_be["items"] = slide.comparison.to_be if isinstance(slide.comparison.to_be, list) else [slide.comparison.to_be]
+                elif slide.bullets:
+                    # bullets를 절반으로 나눠서 as_is/to_be로 처리
+                    mid = len(slide.bullets) // 2
+                    as_is["items"] = slide.bullets[:mid] if mid > 0 else []
+                    to_be["items"] = slide.bullets[mid:] if mid > 0 else slide.bullets
+
+                self.generator.add_comparison_slide(
+                    title=slide.title,
+                    as_is=as_is,
+                    to_be=to_be,
+                    notes=slide.notes or "",
+                )
+
+            elif slide_type == "key_message":
+                self.generator.add_key_message_slide(
+                    message=slide.key_message or slide.title,
+                    supporting_text=slide.subtitle or "",
+                    background_style="dark" if slide.visual_style == "dark" else "gradient",
+                    notes=slide.notes or "",
+                )
+
+            elif slide_type == "content_example":
+                # 마케팅/PR 콘텐츠 예시 슬라이드
+                examples = []
+                if slide.content_examples:
+                    for ex in slide.content_examples:
+                        if hasattr(ex, 'dict'):
+                            examples.append(ex.dict())
+                        elif isinstance(ex, dict):
+                            examples.append(ex)
+                        else:
+                            examples.append({"title": str(ex), "description": ""})
+
+                self.generator.add_content_example_slide(
+                    title=slide.title,
+                    examples=examples,
+                    notes=slide.notes or "",
+                )
+
+            elif slide_type == "channel_strategy":
+                # 채널 전략 슬라이드
+                channels = []
+                if slide.channel_strategy:
+                    for ch in slide.channel_strategy:
+                        if hasattr(ch, 'dict'):
+                            channels.append(ch.dict())
+                        elif isinstance(ch, dict):
+                            channels.append(ch)
+                        else:
+                            channels.append({"name": str(ch), "role": "", "kpis": []})
+
+                self.generator.add_channel_strategy_slide(
+                    title=slide.title,
+                    channels=channels,
+                    notes=slide.notes or "",
+                )
+
+            elif slide_type == "campaign":
+                # 캠페인 슬라이드
+                campaign_data = slide.campaign or {}
+                if hasattr(campaign_data, 'dict'):
+                    campaign_data = campaign_data.dict()
+
+                self.generator.add_campaign_slide(
+                    title=slide.title,
+                    campaign_name=campaign_data.get("name", slide.title),
+                    period=campaign_data.get("period", ""),
+                    objective=campaign_data.get("objective", ""),
+                    activities=campaign_data.get("activities", slide.bullets or []),
+                    notes=slide.notes or "",
+                )
+
+            elif slide_type == "budget":
+                # 예산 슬라이드
+                budget_items = []
+                total = ""
+
+                if slide.table:
+                    table_data = slide.table
+                    if hasattr(table_data, 'rows'):
+                        for row in table_data.rows:
+                            if len(row) >= 4:
+                                budget_items.append({
+                                    "name": row[0],
+                                    "unit_price": row[1],
+                                    "quantity": row[2],
+                                    "amount": row[3],
+                                })
+                            elif len(row) >= 2:
+                                budget_items.append({
+                                    "name": row[0],
+                                    "unit_price": "",
+                                    "quantity": "",
+                                    "amount": row[-1],
+                                })
+                        # 마지막 행이 총계인 경우
+                        if table_data.rows and "총" in str(table_data.rows[-1][0]):
+                            total = str(table_data.rows[-1][-1])
+                            budget_items = budget_items[:-1]
+
+                self.generator.add_budget_slide(
+                    title=slide.title,
+                    budget_items=budget_items,
+                    total=total,
+                    notes=slide.notes or "",
+                )
+
+            elif slide_type == "case_study":
+                # 케이스 스터디 슬라이드
+                case_data = {
+                    "project_name": slide.title,
+                    "client": "",
+                    "period": "",
+                    "description": "",
+                    "kpis": [],
+                }
+
+                if slide.bullets:
+                    desc_parts = [getattr(b, "text", str(b)) for b in (slide.bullets or [])[:2]]
+                    case_data["description"] = " ".join(desc_parts) if desc_parts else ""
+
+                if slide.kpis:
+                    for kpi in slide.kpis:
+                        if hasattr(kpi, 'dict'):
+                            case_data["kpis"].append(kpi.dict())
+                        elif isinstance(kpi, dict):
+                            case_data["kpis"].append(kpi)
+                        else:
+                            case_data["kpis"].append({"name": str(kpi), "value": ""})
+
+                self.generator.add_case_study_slide(
+                    title=slide.title,
+                    case=case_data,
+                    notes=slide.notes or "",
+                )
+
+            elif slide_type == "teaser":
+                # 티저 슬라이드
+                self.generator.add_teaser_slide(
+                    headline=slide.key_message or slide.title,
+                    subheadline=slide.subtitle or "",
+                    background_color="dark_blue",
+                    notes=slide.notes or "",
+                )
+
+            elif slide_type == "index":
+                # 목차 슬라이드
+                self.generator.add_index_slide(
+                    title=slide.title,
+                    items=slide.bullets or [],
+                    current_index=-1,
+                    notes=slide.notes or "",
+                )
+
+            elif slide_type == "process":
+                # 프로세스 슬라이드
+                self.diagram_generator.add_process_slide(
+                    generator=self.generator,
+                    title=slide.title,
+                    bullets=slide.bullets,
+                    key_message=slide.key_message,
+                )
+
+            else:
+                # 기본 콘텐츠 슬라이드로 처리
+                _fallback_content()
+        except (TypeError, AttributeError, ValueError) as e:
+            logger.warning(
+                "슬라이드 유형 %s 처리 실패(%s), 콘텐츠 슬라이드로 대체: %s",
+                slide_type,
+                type(e).__name__,
+                str(e)[:200],
             )
-
-        elif slide_type == "timeline":
-            self.diagram_generator.add_timeline_slide(
-                generator=self.generator,
-                title=slide.title,
-                timeline_items=slide.timeline,
-                key_message=slide.key_message,
-            )
-
-        elif slide_type == "org_chart":
-            self.diagram_generator.add_org_chart_slide(
-                generator=self.generator,
-                title=slide.title,
-                org_chart=slide.org_chart,
-                key_message=slide.key_message,
-            )
-
-        elif slide_type == "comparison":
-            # 비교 슬라이드 (AS-IS / TO-BE)
-            as_is = {"title": "AS-IS (현재)", "items": []}
-            to_be = {"title": "TO-BE (제안)", "items": []}
-
-            if slide.comparison:
-                if hasattr(slide.comparison, 'as_is'):
-                    as_is["items"] = slide.comparison.as_is if isinstance(slide.comparison.as_is, list) else [slide.comparison.as_is]
-                if hasattr(slide.comparison, 'to_be'):
-                    to_be["items"] = slide.comparison.to_be if isinstance(slide.comparison.to_be, list) else [slide.comparison.to_be]
-            elif slide.bullets:
-                # bullets를 절반으로 나눠서 as_is/to_be로 처리
-                mid = len(slide.bullets) // 2
-                as_is["items"] = slide.bullets[:mid] if mid > 0 else []
-                to_be["items"] = slide.bullets[mid:] if mid > 0 else slide.bullets
-
-            self.generator.add_comparison_slide(
-                title=slide.title,
-                as_is=as_is,
-                to_be=to_be,
-                notes=slide.notes or "",
-            )
-
-        elif slide_type == "key_message":
-            self.generator.add_key_message_slide(
-                message=slide.key_message or slide.title,
-                supporting_text=slide.subtitle or "",
-                background_style="dark" if slide.visual_style == "dark" else "gradient",
-                notes=slide.notes or "",
-            )
-
-        elif slide_type == "content_example":
-            # 마케팅/PR 콘텐츠 예시 슬라이드
-            examples = []
-            if slide.content_examples:
-                for ex in slide.content_examples:
-                    if hasattr(ex, 'dict'):
-                        examples.append(ex.dict())
-                    elif isinstance(ex, dict):
-                        examples.append(ex)
-                    else:
-                        examples.append({"title": str(ex), "description": ""})
-
-            self.generator.add_content_example_slide(
-                title=slide.title,
-                examples=examples,
-                notes=slide.notes or "",
-            )
-
-        elif slide_type == "channel_strategy":
-            # 채널 전략 슬라이드
-            channels = []
-            if slide.channel_strategy:
-                for ch in slide.channel_strategy:
-                    if hasattr(ch, 'dict'):
-                        channels.append(ch.dict())
-                    elif isinstance(ch, dict):
-                        channels.append(ch)
-                    else:
-                        channels.append({"name": str(ch), "role": "", "kpis": []})
-
-            self.generator.add_channel_strategy_slide(
-                title=slide.title,
-                channels=channels,
-                notes=slide.notes or "",
-            )
-
-        elif slide_type == "campaign":
-            # 캠페인 슬라이드
-            campaign_data = slide.campaign or {}
-            if hasattr(campaign_data, 'dict'):
-                campaign_data = campaign_data.dict()
-
-            self.generator.add_campaign_slide(
-                title=slide.title,
-                campaign_name=campaign_data.get("name", slide.title),
-                period=campaign_data.get("period", ""),
-                objective=campaign_data.get("objective", ""),
-                activities=campaign_data.get("activities", slide.bullets or []),
-                notes=slide.notes or "",
-            )
-
-        elif slide_type == "budget":
-            # 예산 슬라이드
-            budget_items = []
-            total = ""
-
-            if slide.table:
-                table_data = slide.table
-                if hasattr(table_data, 'rows'):
-                    for row in table_data.rows:
-                        if len(row) >= 4:
-                            budget_items.append({
-                                "name": row[0],
-                                "unit_price": row[1],
-                                "quantity": row[2],
-                                "amount": row[3],
-                            })
-                        elif len(row) >= 2:
-                            budget_items.append({
-                                "name": row[0],
-                                "unit_price": "",
-                                "quantity": "",
-                                "amount": row[-1],
-                            })
-                    # 마지막 행이 총계인 경우
-                    if table_data.rows and "총" in str(table_data.rows[-1][0]):
-                        total = str(table_data.rows[-1][-1])
-                        budget_items = budget_items[:-1]
-
-            self.generator.add_budget_slide(
-                title=slide.title,
-                budget_items=budget_items,
-                total=total,
-                notes=slide.notes or "",
-            )
-
-        elif slide_type == "case_study":
-            # 케이스 스터디 슬라이드
-            case_data = {
-                "project_name": slide.title,
-                "client": "",
-                "period": "",
-                "description": "",
-                "kpis": [],
-            }
-
-            if slide.bullets:
-                case_data["description"] = " ".join(slide.bullets[:2])
-
-            if slide.kpis:
-                for kpi in slide.kpis:
-                    if hasattr(kpi, 'dict'):
-                        case_data["kpis"].append(kpi.dict())
-                    elif isinstance(kpi, dict):
-                        case_data["kpis"].append(kpi)
-                    else:
-                        case_data["kpis"].append({"name": str(kpi), "value": ""})
-
-            self.generator.add_case_study_slide(
-                title=slide.title,
-                case=case_data,
-                notes=slide.notes or "",
-            )
-
-        elif slide_type == "teaser":
-            # 티저 슬라이드
-            self.generator.add_teaser_slide(
-                headline=slide.key_message or slide.title,
-                subheadline=slide.subtitle or "",
-                background_color="dark_blue",
-                notes=slide.notes or "",
-            )
-
-        elif slide_type == "index":
-            # 목차 슬라이드
-            self.generator.add_index_slide(
-                title=slide.title,
-                items=slide.bullets or [],
-                current_index=-1,
-                notes=slide.notes or "",
-            )
-
-        elif slide_type == "process":
-            # 프로세스 슬라이드
-            self.diagram_generator.add_process_slide(
-                generator=self.generator,
-                title=slide.title,
-                bullets=slide.bullets,
-                key_message=slide.key_message,
-            )
-
-        else:
-            # 기본 콘텐츠 슬라이드로 처리
-            self.generator.add_content_slide(
-                title=slide.title,
-                subtitle=slide.subtitle,
-                bullets=slide.bullets,
-                key_message=slide.key_message,
-            )
+            _fallback_content()
 
     # 레거시 호환성을 위한 별칭
     def _add_cover_slide(self, content: ProposalContent) -> None:
@@ -470,6 +502,6 @@ class PPTXOrchestrator:
         self.generator.add_title_slide(
             title=content.project_name,
             subtitle=subtitle,
-            slogan=content.slogan,
+            slogan=getattr(content, "slogan", None),
             is_part_divider=False,
         )

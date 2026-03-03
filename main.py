@@ -26,6 +26,19 @@ from rich.table import Table
 from config.settings import get_settings
 from src.orchestrators.proposal_orchestrator import ProposalOrchestrator
 from src.orchestrators.pptx_orchestrator import PPTXOrchestrator
+from src.utils.logger import LOG_SEPARATOR
+
+# Impact-8 Phase 0~7 라벨 (구분선 출력 시 함께 표시)
+PHASE_LABELS = {
+    0: "HOOK",
+    1: "SUMMARY",
+    2: "INSIGHT",
+    3: "CONCEPT & STRATEGY",
+    4: "ACTION PLAN",
+    5: "MANAGEMENT",
+    6: "WHY US",
+    7: "INVESTMENT & ROI",
+}
 
 load_dotenv()
 
@@ -235,7 +248,7 @@ async def _generate_async_impl(
     _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
         get_settings().llm_provider, "LLM"
     )
-    console.print(f"\n[bold cyan]Phase 1: 콘텐츠 생성 ({_llm} - Impact-8)[/bold cyan]")
+    console.print(f"[bold cyan]Phase 1: 콘텐츠 생성 ({_llm} - Impact-8)[/bold cyan]")
 
     proposal_orchestrator = ProposalOrchestrator(api_key=api_key)
 
@@ -245,9 +258,21 @@ async def _generate_async_impl(
         console=console,
     ) as progress:
         task = progress.add_task("분석 및 콘텐츠 생성 중...", total=None)
+        _last_phase = [-1]  # Phase 0~7 구분선 출력용
 
         def update_progress(p):
             msg = p.get("message", "처리 중...")
+            # "Phase N:" (N=0~7) 시작 시에만 구분선 출력
+            parts = msg.split(":", 1)
+            if len(parts) >= 2 and parts[0].strip().startswith("Phase "):
+                tok = parts[0].strip().split()
+                if len(tok) == 2 and tok[1].isdigit():
+                    n = int(tok[1])
+                    if 0 <= n <= 7 and n != _last_phase[0]:
+                        console.print(LOG_SEPARATOR)
+                        console.print(f"[bold cyan]Phase {n}: {PHASE_LABELS.get(n, '')}[/bold cyan]")
+                        console.print(LOG_SEPARATOR)
+                        _last_phase[0] = n
             progress.update(task, description=msg)
 
         submission_date = datetime.now().strftime("%Y-%m-%d")
@@ -279,7 +304,7 @@ async def _generate_async_impl(
         console.print(f"[dim]JSON 저장: {json_path}[/dim]")
 
     # Phase 2: PPTX 생성 ([회사명])
-    console.print("\n[bold cyan]Phase 2: PPTX 생성 (Modern 스타일)[/bold cyan]")
+    console.print("[bold cyan]Phase 2: PPTX 생성 (Modern 스타일)[/bold cyan]")
 
     pptx_orchestrator = PPTXOrchestrator()
 
@@ -289,9 +314,21 @@ async def _generate_async_impl(
         console=console,
     ) as progress:
         task = progress.add_task("PPTX 생성 중...", total=None)
+        _last_phase_pptx = [-1]  # Phase 0~7 구분선 출력용
 
         def update_progress(p):
             msg = p.get("message", "처리 중...")
+            # "Phase N:" (N=0~7) 시작 시에만 구분선 출력
+            parts = msg.split(":", 1)
+            if len(parts) >= 2 and parts[0].strip().startswith("Phase "):
+                tok = parts[0].strip().split()
+                if len(tok) == 2 and tok[1].isdigit():
+                    n = int(tok[1])
+                    if 0 <= n <= 7 and n != _last_phase_pptx[0]:
+                        console.print(LOG_SEPARATOR)
+                        console.print(f"[bold cyan]Phase {n}: {PHASE_LABELS.get(n, '')}[/bold cyan]")
+                        console.print(LOG_SEPARATOR)
+                        _last_phase_pptx[0] = n
             progress.update(task, description=msg)
 
         output_path = output_dir / f"{safe_filename}_제안서.pptx"
@@ -325,7 +362,7 @@ async def _generate_async_impl(
 
 def _print_content_summary(summary: dict):
     """콘텐츠 요약 출력"""
-    console.print("\n[bold]생성된 콘텐츠 요약:[/bold]")
+    console.print("[bold]생성된 콘텐츠 요약:[/bold]")
 
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("Phase", style="dim")
@@ -373,7 +410,8 @@ def analyze(
         console.print(f"[red]{key_name}가 설정되지 않았습니다. .env에서 LLM_PROVIDER={_p} 에 맞는 API 키를 설정하세요.[/red]")
         raise typer.Exit(1)
 
-    console.print(f"\n[bold]RFP 분석:[/bold] {rfp_path}\n")
+    console.print(LOG_SEPARATOR)
+    console.print(f"[bold]RFP 분석:[/bold] {rfp_path}\n")
 
     from src.parsers.pdf_parser import PDFParser
     from src.parsers.docx_parser import DOCXParser
@@ -441,6 +479,7 @@ def analyze(
     result = out[1]
 
     # 결과 출력
+    console.print(LOG_SEPARATOR)
     console.print(
         Panel(
             f"[bold]프로젝트명:[/bold] {result.project_name}\n"

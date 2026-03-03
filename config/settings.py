@@ -28,6 +28,10 @@ class Settings(BaseModel):
     # API (Groq, 무료 티어 한도 넉넉함)
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+    # 413(Request too large) 방지: user 메시지 최대 문자 수. 초과 시 잘라서 전송 (0이면 제한 없음)
+    groq_max_user_message_chars: int = int(os.getenv("GROQ_MAX_USER_MESSAGE_CHARS", "0") or "0")
+    # Groq 호출 간 대기(초). 429/한도 완화용 (0이면 GEMINI_DELAY_SECONDS 사용)
+    groq_delay_seconds: float = float(os.getenv("GROQ_DELAY_SECONDS", "0") or "0")
 
     # Paths
     base_dir: Path = Path(__file__).parent.parent

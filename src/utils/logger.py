@@ -1,7 +1,21 @@
 """로깅 설정"""
 
 import sys
+from typing import Optional
+
 from loguru import logger
+
+# 단계별 로그 구분자 (main/오케스트레이터에서 동일 문자열 사용)
+LOG_SEPARATOR = "----------------------------------------------"
+
+
+def log_stage(stage_name: Optional[str] = None) -> None:
+    """단계 구분선 및 단계명 로그 (가독성용)"""
+    _log = logger.bind(name="stage")
+    _log.info(LOG_SEPARATOR)
+    if stage_name:
+        _log.info(f"  {stage_name}")
+        _log.info(LOG_SEPARATOR)
 
 
 def setup_logger(level: str = "INFO") -> None:

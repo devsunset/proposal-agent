@@ -69,6 +69,7 @@ class PPTXGenerator:
         title: str,
         subtitle: str = "",
         is_part_divider: bool = False,
+        slogan: Optional[str] = None,
     ) -> None:
         """
         타이틀 슬라이드 추가
@@ -77,6 +78,7 @@ class PPTXGenerator:
             title: 제목
             subtitle: 부제목
             is_part_divider: Part 구분자 슬라이드 여부
+            slogan: 슬로건/한 줄 메시지 (표지용, 선택)
         """
         layout_name = "section" if is_part_divider else "title"
         layout_idx = self.template_manager.get_layout_index(layout_name)
@@ -108,6 +110,10 @@ class PPTXGenerator:
                         color_name="text_light",
                     )
                     break
+
+        # 슬로건 (표지용, 선택)
+        if slogan and slogan.strip():
+            self._add_key_message(slide, slogan.strip())
 
     def add_content_slide(
         self,

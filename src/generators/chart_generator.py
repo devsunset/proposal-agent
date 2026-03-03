@@ -4,7 +4,7 @@
 타임라인, 조직도, 차트 등 시각화 요소 생성
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -15,6 +15,9 @@ from .template_manager import TemplateManager
 from ..schemas.proposal_schema import TimelineItem, OrgChartNode, KPIItem, CompetitorComparison
 from ..utils.logger import get_logger
 
+if TYPE_CHECKING:
+    from .pptx_generator import PPTXGenerator
+
 logger = get_logger("chart_generator")
 
 
@@ -24,6 +27,97 @@ class ChartGenerator:
     def __init__(self, template_manager: TemplateManager):
         self.template_manager = template_manager
         self.design = template_manager.design_system
+
+    def add_chart_slide(
+        self,
+        generator: "PPTXGenerator",
+        title: str,
+        chart_data: Any = None,
+        key_message: Optional[str] = None,
+    ) -> None:
+        """
+        차트 슬라이드 추가 (제너레이터에 빈 슬라이드 추가 후 차트 영역 배치)
+
+        Args:
+            generator: PPTXGenerator 인스턴스
+            title: 슬라이드 제목
+            chart_data: ChartData 또는 dict (title, data 등)
+            key_message: 핵심 메시지 (하단)
+        """
+        layout_idx = generator.template_manager.get_layout_index("blank")
+        try:
+            slide_layout = generator.prs.slide_layouts[layout_idx]
+        except (IndexError, AttributeError):
+            slide_layout = generator.prs.slide_layouts[6]
+        slide = generator.prs.slides.add_slide(slide_layout)
+        generator._add_title_textbox(slide, title)
+        data = {}
+        if chart_data:
+            if hasattr(chart_data, "data"):
+                data = getattr(chart_data, "data") or {}
+            elif hasattr(chart_data, "get"):
+                data = chart_data.get("data", chart_data)
+        if not data and hasattr(chart_data, "title"):
+            data = {"items": [{"label": getattr(chart_data, "title", ""), "value": ""}]}
+        self.add_simple_bar_chart_placeholder(slide, title, data or {"items": []})
+        if key_message:
+            generator._add_key_message(slide, key_message)
+
+    def add_timeline_slide(
+        self,
+        generator: "PPTXGenerator",
+        title: str,
+        timeline_items: Optional[List[TimelineItem]] = None,
+        key_message: Optional[str] = None,
+    ) -> None:
+        """
+        타임라인 슬라이드 추가
+
+        Args:
+            generator: PPTXGenerator 인스턴스
+            title: 슬라이드 제목
+            timeline_items: 타임라인 항목 목록
+            key_message: 핵심 메시지 (하단)
+        """
+        layout_idx = generator.template_manager.get_layout_index("blank")
+        try:
+            slide_layout = generator.prs.slide_layouts[layout_idx]
+        except (IndexError, AttributeError):
+            slide_layout = generator.prs.slide_layouts[6]
+        slide = generator.prs.slides.add_slide(slide_layout)
+        generator._add_title_textbox(slide, title)
+        if timeline_items:
+            self.add_timeline_to_slide(slide, timeline_items)
+        if key_message:
+            generator._add_key_message(slide, key_message)
+
+    def add_org_chart_slide(
+        self,
+        generator: "PPTXGenerator",
+        title: str,
+        org_chart: Optional[OrgChartNode] = None,
+        key_message: Optional[str] = None,
+    ) -> None:
+        """
+        조직도 슬라이드 추가
+
+        Args:
+            generator: PPTXGenerator 인스턴스
+            title: 슬라이드 제목
+            org_chart: 조직도 루트 노드
+            key_message: 핵심 메시지 (하단)
+        """
+        layout_idx = generator.template_manager.get_layout_index("blank")
+        try:
+            slide_layout = generator.prs.slide_layouts[layout_idx]
+        except (IndexError, AttributeError):
+            slide_layout = generator.prs.slide_layouts[6]
+        slide = generator.prs.slides.add_slide(slide_layout)
+        generator._add_title_textbox(slide, title)
+        if org_chart:
+            self.add_org_chart_to_slide(slide, org_chart)
+        if key_message:
+            generator._add_key_message(slide, key_message)
 
     def add_timeline_to_slide(
         self,

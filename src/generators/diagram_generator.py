@@ -10,9 +10,12 @@
 - 컨셉 다이어그램
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from pptx.util import Inches, Pt, Emu
+
+if TYPE_CHECKING:
+    from .pptx_generator import PPTXGenerator
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE, MSO_CONNECTOR
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
@@ -33,6 +36,39 @@ class DiagramGenerator:
     # ==========================================================================
     # 프로세스 플로우 다이어그램
     # ==========================================================================
+    def add_process_slide(
+        self,
+        generator: "PPTXGenerator",
+        title: str,
+        bullets: Any = None,
+        key_message: Optional[str] = None,
+    ) -> None:
+        """
+        프로세스 슬라이드 추가 (빈 슬라이드 + 제목 + 프로세스 플로우 + key_message)
+
+        Args:
+            generator: PPTXGenerator 인스턴스
+            title: 슬라이드 제목
+            bullets: BulletPoint 리스트 또는 단계 텍스트 리스트
+            key_message: 핵심 메시지 (하단)
+        """
+        layout_idx = generator.template_manager.get_layout_index("blank")
+        try:
+            slide_layout = generator.prs.slide_layouts[layout_idx]
+        except (IndexError, AttributeError):
+            slide_layout = generator.prs.slide_layouts[6]
+        slide = generator.prs.slides.add_slide(slide_layout)
+        generator._add_title_textbox(slide, title)
+        steps = []
+        for b in (bullets or []):
+            text = getattr(b, "text", str(b)) if b else ""
+            if text:
+                steps.append({"title": (text[:50] if isinstance(text, str) else str(text)[:50]), "description": (text[:100] if isinstance(text, str) else str(text)[:100])})
+        if steps:
+            self.add_process_flow(slide, steps)
+        if key_message:
+            generator._add_key_message(slide, key_message)
+
     def add_process_flow(
         self,
         slide,

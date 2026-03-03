@@ -119,7 +119,7 @@ class BaseAgent(ABC):
                 time.sleep(delay_sec)
             return result
         except Exception as e:
-            logger.error("Claude API 호출 실패: %s", str(e)[:500])
+            logger.error(f"Claude API 호출 실패: {str(e)[:500]}")
             raise RuntimeError(f"Claude API 호출 실패: {e}") from e
 
     def _call_groq(
@@ -128,7 +128,13 @@ class BaseAgent(ABC):
         user_message: str,
         max_tokens: int = 4096,
     ) -> str:
-        """Groq API 호출 (무료 한도 넉넉)"""
+        """Groq API 호출 (413/429 대응: 입력 길이 제한·호출 간 대기)"""
+        settings = get_settings()
+        # 413 Request too large 방지: user 메시지 길이 제한 (TPM 한도 내로)
+        max_chars = getattr(settings, "groq_max_user_message_chars", 0) or 0
+        if max_chars > 0 and len(user_message) > max_chars:
+            user_message = user_message[:max_chars] + "\n\n... (길이 제한으로 일부 생략됨)"
+            logger.debug("Groq user_message %d자로 제한 적용", max_chars)
         logger.debug("Groq API 호출 (model: %s)", self._groq_model)
         try:
             response = self._groq_client.chat.completions.create(
@@ -142,12 +148,15 @@ class BaseAgent(ABC):
             result = (response.choices[0].message.content or "").strip()
             if not result:
                 raise ValueError("Groq 응답이 비어 있습니다.")
-            delay_sec = get_settings().gemini_delay_seconds
+            delay_sec = getattr(settings, "groq_delay_seconds", 0) or 0
+            if delay_sec <= 0:
+                delay_sec = settings.gemini_delay_seconds
             if delay_sec > 0:
                 time.sleep(delay_sec)
             return result
         except Exception as e:
-            logger.error("Groq API 호출 실패: %s", str(e)[:500])
+            err_msg = str(e)[:500]
+            logger.error(f"Groq API 호출 실패: {err_msg}")
             raise RuntimeError(f"Groq API 호출 실패: {e}") from e
 
     def _call_gemini(
@@ -198,7 +207,7 @@ class BaseAgent(ABC):
                     )
                     time.sleep(delay)
                     continue
-                logger.error("Gemini API 호출 실패: %s", str(e)[:500])
+                logger.error(f"Gemini API 호출 실패: {str(e)[:500]}")
                 if is_quota_error:
                     raise RuntimeError(
                         "Gemini API 할당량 초과(429). .env에서 LLM_PROVIDER=groq 또는 LLM_PROVIDER=claude 로 바꾸고 해당 API 키를 설정하면 다른 모델로 전환할 수 있습니다."
