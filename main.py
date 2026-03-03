@@ -242,7 +242,7 @@ async def _generate_async_impl(
         Panel(
             f"[bold]{_llm}[/bold] - Impact-8",
             title="[bold]Step 1: 콘텐츠 생성[/bold]",
-            border_style="green",
+            border_style="cyan",
         )
     )
 
@@ -270,7 +270,7 @@ async def _generate_async_impl(
         )
 
     console.print(
-        Panel("[green]✓ 완료[/green]", title="[bold]Step 1 완료[/bold]", border_style="green")
+        Panel("[green]✓ 완료[/green]", title="[bold]Step 1 완료[/bold]", border_style="cyan")
     )
     console.print()
 
@@ -294,7 +294,7 @@ async def _generate_async_impl(
         Panel(
             "Modern 스타일",
             title="[bold]Step 2: PPTX 생성[/bold]",
-            border_style="green",
+            border_style="cyan",
         )
     )
 
@@ -324,7 +324,7 @@ async def _generate_async_impl(
         )
 
     console.print(
-        Panel("[green]✓ 완료[/green]", title="[bold]Step 2 완료[/bold]", border_style="green")
+        Panel("[green]✓ 완료[/green]", title="[bold]Step 2 완료[/bold]", border_style="cyan")
     )
     console.print()
 
@@ -362,7 +362,7 @@ def _make_progress_callback(console, progress, task, last_phase_ref):
                         Panel(
                             "",
                             title=f"[bold]Phase {n}: {PHASE_TITLES.get(n, '')}[/bold]",
-                            border_style="green",
+                            border_style="yellow",
                         )
                     )
                     last_phase_ref[0] = n
