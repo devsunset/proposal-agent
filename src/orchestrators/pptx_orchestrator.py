@@ -22,7 +22,7 @@ class PPTXOrchestrator:
     """
     PPTX 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
 
-    [회사명] 레이어: Gemini 콘텐츠 → Modern 스타일 PPTX
+    [회사명] 레이어: LLM 콘텐츠 → Modern 스타일 PPTX
     """
 
     # Impact-8 Phase 제목
@@ -57,7 +57,7 @@ class PPTXOrchestrator:
         ProposalContent를 PPTX로 변환 (Impact-8 Framework, Modern 스타일)
 
         Args:
-            content: Gemini가 생성한 제안서 콘텐츠 (Impact-8 구조)
+            content: LLM이 생성한 제안서 콘텐츠 (Impact-8 구조)
             output_path: 출력 PPTX 경로
             template_name: 사용할 템플릿/스타일
             progress_callback: 진행 상황 콜백

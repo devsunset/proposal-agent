@@ -22,7 +22,7 @@ class Settings(BaseModel):
     # API (Gemini)
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
-    # 429 방지: API 호출 간 대기(초). 무료 한도일 때 5~10 권장
+    # 429 방지: 호출 간 대기(초) + 429 시 재시도 대기 기준값 (Claude/Gemini/Groq 공통). 5~10 권장
     gemini_delay_seconds: float = float(os.getenv("GEMINI_DELAY_SECONDS", "8"))
 
     # API (Groq, 무료 티어 한도 넉넉함)

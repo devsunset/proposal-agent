@@ -175,10 +175,14 @@ def generate(
     )
     if out[0] == "error":
         err = out[1]
+        _s = get_settings()
+        _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
+            _s.llm_provider, _s.llm_provider.title()
+        )
         if "429" in str(err) or "할당량" in str(err):
-            msg = "Gemini API 할당량 초과(429). 잠시 후 재시도하거나 플랜/결제를 확인하세요."
+            msg = f"{_llm} API 할당량 초과(429). 잠시 후 재시도하거나 플랜/결제를 확인하세요."
         else:
-            msg = "제안서 생성 실패. API 키, 네트워크, 로그를 확인하세요."
+            msg = f"제안서 생성 실패 ({_llm} API 키, 네트워크, 로그 확인)."
         try:
             print("제안서 생성 실패:", msg)
         except Exception:
@@ -419,11 +423,15 @@ def analyze(
     out = asyncio.run(_analyze())
     if out[0] == "error":
         e = out[1]
+        _s = get_settings()
+        _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
+            _s.llm_provider, _s.llm_provider.title()
+        )
         # Windows cp949 콘솔 인코딩 오류 방지: Rich 대신 print 사용, 메시지는 ASCII/한글만
         if "429" in str(e) or "할당량" in str(e):
-            msg = "Gemini API 할당량 초과(429). 잠시 후 재시도하거나 플랜/결제를 확인하세요."
+            msg = f"{_llm} API 할당량 초과(429). 잠시 후 재시도하거나 플랜/결제를 확인하세요."
         else:
-            msg = "Gemini API 호출 실패. API 키와 네트워크를 확인하세요."
+            msg = f"{_llm} API 호출 실패. API 키와 네트워크를 확인하세요."
         try:
             print("RFP 분석 실패:", msg)
         except Exception:

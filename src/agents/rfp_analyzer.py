@@ -130,12 +130,15 @@ class RFPAnalyzer(BaseAgent):
 ```
 """
 
+        _llm_label = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
+            self._provider, self._provider.title()
+        )
         if progress_callback:
             progress_callback(
-                {"step": 2, "total": 3, "message": "Gemini 분석 수행 중..."}
+                {"step": 2, "total": 3, "message": f"{_llm_label} 분석 수행 중..."}
             )
 
-        # Gemini API 호출
+        # LLM API 호출
         response = self._call_llm(system_prompt, user_message, max_tokens=8192)
 
         if progress_callback:

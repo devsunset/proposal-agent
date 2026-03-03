@@ -1,7 +1,7 @@
 """
 입찰 제안서 자동 생성 에이전트
 
-- Gemini: 콘텐츠 생성 (RFP 분석, Part 1~6 텍스트)
+- LLM (Claude/Gemini/Groq): 콘텐츠 생성 (RFP 분석, Part 1~6 텍스트)
 - [회사명]: 문서화 (PPTX 변환, 디자인)
 """
 

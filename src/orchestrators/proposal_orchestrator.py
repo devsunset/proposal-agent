@@ -83,13 +83,17 @@ class ProposalOrchestrator:
             if company_data_path:
                 company_data = self._load_company_data(company_data_path)
 
-            # Step 3: RFP 분석 (Gemini)
+            # Step 3: RFP 분석 (설정된 LLM)
+            _settings = get_settings()
+            _llm_label = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
+                _settings.llm_provider, _settings.llm_provider.title()
+            )
             if progress_callback:
                 progress_callback({
                     "phase": "analysis",
                     "step": 2,
                     "total": 4,
-                    "message": "RFP 분석 중 (Gemini)...",
+                    "message": f"RFP 분석 중 ({_llm_label})...",
                 })
 
             rfp_analysis = await self.rfp_analyzer.execute(
@@ -108,13 +112,13 @@ class ProposalOrchestrator:
 
             logger.info(f"RFP 분석 완료: {final_project_name} ({final_client_name})")
 
-            # Step 4: 콘텐츠 생성 (Gemini) - Impact-8 Framework
+            # Step 4: 콘텐츠 생성 (설정된 LLM) - Impact-8 Framework
             if progress_callback:
                 progress_callback({
                     "phase": "generation",
                     "step": 3,
                     "total": 4,
-                    "message": "제안서 콘텐츠 생성 중 (Impact-8 Framework)...",
+                    "message": f"제안서 콘텐츠 생성 중 ({_llm_label} - Impact-8)...",
                 })
 
             proposal_content = await self.content_generator.execute(
