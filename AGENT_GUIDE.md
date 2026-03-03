@@ -1,9 +1,12 @@
 # 입찰 제안서 자동 생성 에이전트 (Impact-8 + pptx_generator + TemplateManager)
 
+> **LLM 설정**: 본 가이드의 콘텐츠 생성·분석 역할은 **.env의 `LLM_PROVIDER`** 설정에 따라 동적으로 적용됩니다.  
+> `LLM_PROVIDER=claude` | `gemini` | `groq` 중 하나를 선택하면, 해당 프로바이더(Claude / Gemini / Groq)가 RFP 분석 및 Phase 0~7 콘텐츠 생성을 수행합니다.
+
 ## 프로젝트 개요
 RFP(제안요청서) 문서를 입력받아 PPTX 형식의 입찰 제안서를 자동 생성하는 Python 에이전트 시스템.
 
-**현재 구현**: 문서 파싱(`get_parser_for_path` → PDF/DOCX/TXT/PPTX), RFP 분석·콘텐츠 생성(LLM: Claude/Gemini/Groq), PPTX 렌더링(`TemplateManager` + `pptx_generator` + `chart_generator` + `diagram_generator`).
+**현재 구현**: 문서 파싱(`get_parser_for_path` → PDF/DOCX/TXT/PPTX), RFP 분석·콘텐츠 생성(**설정된 LLM**: Claude/Gemini/Groq, `.env`의 `LLM_PROVIDER`로 선택), PPTX 렌더링(`TemplateManager` + `pptx_generator` + `chart_generator` + `diagram_generator`).
 
 ## ★★★ 제안서 생성 워크플로우 (최우선 규칙)
 
@@ -41,7 +44,7 @@ output/테스트 XX/        ← PPTX 출력 (생성 스크립트 + 결과물)
 ### 레이아웃·슬라이드 (현재 구현)
 
 PPTX 생성은 `src/generators/pptx_generator.py`(제목/본문/테이블/2·3단), `chart_generator.py`(차트·타임라인·조직도), `diagram_generator.py`(프로세스 플로우)와 `TemplateManager`(템플릿·디자인 시스템)로 수행됩니다.  
-`main.py generate` 명령이 RFP 파싱 → 콘텐츠 생성 → PPTX 렌더링을 한 번에 실행합니다.
+`main.py generate` 명령이 RFP 파싱 → 콘텐츠 생성(설정된 LLM) → PPTX 렌더링을 한 번에 실행합니다.
 
 ### ★★★ 겹침·공백 방지 규칙 (참고)
 
@@ -102,7 +105,7 @@ python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처"
 python main.py analyze input/rfp.pdf
 ```
 
-Win Theme, Executive Summary, Action Title 등은 콘텐츠 생성(Impact-8) 단계에서 자동 반영됩니다.
+Win Theme, Executive Summary, Action Title 등은 콘텐츠 생성(Impact-8) 단계에서 **설정된 LLM**으로 자동 반영됩니다.
 - Win Theme: 제안서 전체에 반복되는 핵심 수주 전략 메시지
 - Executive Summary: 의사결정권자용 1페이지 핵심 요약
 - Next Step: 다음 단계 안내 / Call to Action
@@ -110,7 +113,7 @@ Win Theme, Executive Summary, Action Title 등은 콘텐츠 생성(Impact-8) 단
 
 ## 역할 분리
 
-### Gemini (콘텐츠 생성)
+### 설정된 LLM (콘텐츠 생성) — .env의 LLM_PROVIDER에 따라 Claude / Gemini / Groq 중 하나
 - RFP 문서 분석 및 핵심 정보 추출
 - Phase 0~7 제안서 콘텐츠 생성
 - 수주 전략 및 차별화 포인트 도출
@@ -125,6 +128,7 @@ Win Theme, Executive Summary, Action Title 등은 콘텐츠 생성(Impact-8) 단
 
 ```
 ├── main.py                 # CLI 엔트리포인트
+├── AGENT_GUIDE.md          # 본 가이드 (.env LLM_PROVIDER에 따른 동적 적용 안내)
 ├── config/
 │   ├── prompts/            # Phase별 프롬프트 템플릿
 │   │   ├── content_guidelines.txt
@@ -132,7 +136,7 @@ Win Theme, Executive Summary, Action Title 등은 콘텐츠 생성(Impact-8) 단
 │   └── proposal_types.py   # 제안서 유형·가중치
 ├── src/
 │   ├── parsers/            # 문서 파싱 (PDF, DOCX, TXT, PPTX) — get_parser_for_path
-│   ├── agents/             # RFP 분석·콘텐츠 생성 (LLM)
+│   ├── agents/             # RFP 분석·콘텐츠 생성 (설정된 LLM)
 │   ├── generators/         # PPTX: template_manager, pptx_generator, chart_generator, diagram_generator
 │   ├── orchestrators/      # proposal_orchestrator, pptx_orchestrator
 │   └── schemas/            # Pydantic 스키마 (proposal_schema, rfp_schema)
@@ -150,11 +154,14 @@ Win Theme, Executive Summary, Action Title 등은 콘텐츠 생성(Impact-8) 단
 # 의존성 설치
 pip install -r requirements.txt
 
-# .env 설정
+# .env 설정 — 사용할 LLM 하나 선택 후 해당 API 키 설정
 cp .env.example .env
-# GEMINI_API_KEY 설정
+# LLM_PROVIDER=claude | gemini | groq (하나만 선택)
+# claude → ANTHROPIC_API_KEY
+# gemini → GEMINI_API_KEY
+# groq   → GROQ_API_KEY
 
-# 제안서 생성 (기본: Impact-8 구조)
+# 제안서 생성 (기본: Impact-8 구조, 설정된 LLM 사용)
 python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처"
 
 # 프로젝트 유형 지정
@@ -303,13 +310,13 @@ Topic Title에서 Action Title로 전환
 
 ## 핵심 컴포넌트
 
-### 스키마 (Gemini ↔ [회사명] 인터페이스)
+### 스키마 (설정된 LLM ↔ [회사명] 인터페이스)
 - `src/schemas/proposal_schema.py` - ProposalContent, PhaseContent (v3.1)
   - 새로운 모델: WinTheme, KPIWithBasis, ExecutiveSummary, NextStep, ActionTitle
   - 새로운 SlideType: EXECUTIVE_SUMMARY, NEXT_STEP, DIFFERENTIATION
 - `src/schemas/rfp_schema.py` - RFPAnalysis
 
-### 에이전트 (Gemini)
+### 에이전트 (설정된 LLM — .env LLM_PROVIDER: claude | gemini | groq)
 - `src/agents/rfp_analyzer.py` - RFP 분석
 - `src/agents/content_generator.py` - 콘텐츠 생성
 
@@ -319,9 +326,7 @@ Topic Title에서 Action Title로 전환
 - `src/generators/chart_generator.py` - 차트/다이어그램
 
 ### 디자인 설정
-- `config/design/design_style.py` - Modern 스타일 정의 (v3.1)
-  - 새로운 스타일: WinThemeBadgeStyle, ExecutiveSummaryStyle, NextStepStyle, DifferentiationStyle
-  - WIN_THEME_TEMPLATES: 프로젝트 유형별 Win Theme 템플릿
+- `src/generators/template_manager.py` - 템플릿·디자인 시스템 (색상·폰트·레이아웃). Modern 스타일은 코드 내 `_get_design_system()` 등으로 정의됩니다.
 
 ### 콘텐츠 가이드라인
 - `config/prompts/content_guidelines.txt` - Action Title, Win Theme, KPI 산출 근거 작성 가이드

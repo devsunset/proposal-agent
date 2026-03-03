@@ -93,6 +93,7 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator)
 
 ```
 ├── main.py                     # CLI 엔트리포인트 (generate, analyze, types, info, templates)
+├── AGENT_GUIDE.md              # 에이전트 가이드 (.env LLM_PROVIDER에 따른 동적 적용)
 ├── .env.example                # 환경 변수 예시 (복사 후 .env로 사용)
 ├── config/
 │   ├── settings.py             # API 키·LLM 선택·경로·재시도/토큰 설정
@@ -125,6 +126,7 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator)
 
 ## 가이드 문서
 
+- [에이전트 가이드](AGENT_GUIDE.md) — AI/코드 어시스턴트용 (.env LLM_PROVIDER 동적 적용)
 - [실행 가이드](docs/실행_가이드.md) — 설치·설정·실행 (Claude/Gemini/Groq)
 - [설치 및 사용 가이드](docs/INSTALL_AND_USAGE.md) — 단계별 설치·사용법
 - [에이전트 구축·시스템 구조](docs/입찰제안서_에이전트_가이드.md) — 아키텍처 및 설계
