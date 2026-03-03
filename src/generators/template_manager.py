@@ -20,9 +20,6 @@ from config.settings import get_settings
 logger = get_logger("template_manager")
 _DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
-# 테마 XML 네임스페이스 (DrawingML)
-_DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
-
 
 class TemplateManager:
     """PPTX 템플릿 관리자"""
@@ -33,6 +30,8 @@ class TemplateManager:
         self.layouts = self._load_layouts()
         self.design_system = self._get_design_system()
         self._cached_guide_path: Optional[Path] = None
+        # 템플릿 PPTX에서 동적 추출한 레이아웃/위치 (하드코딩 대체)
+        self._layout_geometry: Optional[Dict[str, Any]] = None
 
     def _load_layouts(self) -> Dict[str, Any]:
         """레이아웃 정의 로드"""
@@ -203,6 +202,74 @@ class TemplateManager:
                     self.design_system["fonts"][k] = str(extracted["fonts"][k])
             logger.info("템플릿 PPTX 테마 폰트 적용: {}", extracted.get("fonts"))
 
+    def _extract_layout_from_presentation(self, prs: Presentation) -> None:
+        """
+        템플릿 PPTX의 슬라이드 크기·플레이스홀더 위치를 추출해 _layout_geometry에 저장.
+        생성 시 하드코딩 대신 이 값만 사용하도록 함.
+        """
+        try:
+            def to_inch(v) -> float:
+                if v is None:
+                    return 0.0
+                return getattr(v, "inches", None) or (float(v) / 914400.0)
+            sw = to_inch(prs.slide_width)
+            sh = to_inch(prs.slide_height)
+            placeholders: Dict[str, Dict[str, Any]] = {}
+            for layout in prs.slide_layouts:
+                for ph in layout.placeholders:
+                    idx = ph.placeholder_format.idx
+                    role = "title" if idx == 0 else ("body" if idx == 1 else f"idx_{idx}")
+                    if role in placeholders:
+                        continue
+                    geom = {
+                        "left": to_inch(ph.left),
+                        "top": to_inch(ph.top),
+                        "width": to_inch(ph.width),
+                        "height": to_inch(ph.height),
+                    }
+                    if hasattr(ph, "text_frame") and ph.text_frame.paragraphs:
+                        p0 = ph.text_frame.paragraphs[0]
+                        if getattr(p0.font, "size", None) is not None:
+                            geom["font_size_pt"] = p0.font.size.pt
+                        if getattr(p0.font, "name", None):
+                            geom["font_name"] = p0.font.name
+                    placeholders[role] = geom
+                if placeholders:
+                    break
+            self._layout_geometry = {
+                "slide_width_inches": sw,
+                "slide_height_inches": sh,
+                "placeholders": placeholders,
+            }
+            logger.info(
+                "템플릿 레이아웃 추출: 슬라이드 %.2f x %.2f inch, 플레이스홀더 %s",
+                sw, sh, list(placeholders.keys()),
+            )
+        except Exception as e:
+            logger.warning("템플릿 레이아웃 추출 실패: %s", e)
+            self._layout_geometry = None
+
+    def get_slide_width_inches(self) -> Optional[float]:
+        """템플릿에서 추출한 슬라이드 너비(inch). 없으면 None."""
+        if not self._layout_geometry:
+            return None
+        return self._layout_geometry.get("slide_width_inches")
+
+    def get_slide_height_inches(self) -> Optional[float]:
+        """템플릿에서 추출한 슬라이드 높이(inch). 없으면 None."""
+        if not self._layout_geometry:
+            return None
+        return self._layout_geometry.get("slide_height_inches")
+
+    def get_placeholder_geometry(self, role: str) -> Optional[Dict[str, Any]]:
+        """
+        템플릿에서 추출한 플레이스홀더 위치/크기. role: 'title', 'body' 등.
+        반환: { left, top, width, height (, font_size_pt, font_name) } 또는 None.
+        """
+        if not self._layout_geometry:
+            return None
+        return (self._layout_geometry.get("placeholders") or {}).get(role)
+
     def _find_guide_template(self) -> Optional[Path]:
         """
         templates 폴더 하위에서 '가이드' 또는 'guide'가 포함된 .pptx 파일을 찾음.
@@ -247,21 +314,24 @@ class TemplateManager:
             template_path = templates_resolved / f"{safe_name}.pptx"
 
         if template_path.exists():
-            logger.info("템플릿 로드: {} (해당 PPTX 테마·폰트 규칙으로 제안서 생성)", template_path.name)
+            logger.info("템플릿 로드: {} (해당 PPTX 테마·폰트·레이아웃 기준으로 제안서 생성)", template_path.name)
             prs = Presentation(template_path)
             self._clear_all_slides(prs)
             self._apply_design_from_presentation(prs)
+            self._extract_layout_from_presentation(prs)
             return prs
 
         guide_path = self._find_guide_template()
         if guide_path is not None:
-            logger.info("가이드 템플릿 로드: {} (해당 PPTX 테마·폰트 규칙으로 제안서 생성)", guide_path.name)
+            logger.info("가이드 템플릿 로드: {} (해당 PPTX 테마·폰트·레이아웃 기준으로 제안서 생성)", guide_path.name)
             prs = Presentation(guide_path)
             self._clear_all_slides(prs)
             self._apply_design_from_presentation(prs)
+            self._extract_layout_from_presentation(prs)
             return prs
 
         logger.info("기본 빈 프레젠테이션 생성 (templates 내 guide 포함 .pptx 없음)")
+        self._layout_geometry = None
         return Presentation()
 
     def _clear_all_slides(self, prs: Presentation) -> None:

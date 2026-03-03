@@ -50,6 +50,46 @@ class PPTXGenerator:
         self.prs = self.template_manager.load_template(template_name)
         return self.prs
 
+    def _slide_width_inches(self) -> float:
+        """템플릿에서 추출한 슬라이드 너비. 없을 때만 prs 또는 기본값."""
+        w = self.template_manager.get_slide_width_inches()
+        if w is not None:
+            return w
+        if self.prs:
+            return getattr(self.prs.slide_width, "inches", float(self.prs.slide_width) / 914400.0)
+        return 13.33
+
+    def _slide_height_inches(self) -> float:
+        """템플릿에서 추출한 슬라이드 높이. 없을 때만 prs 또는 기본값."""
+        h = self.template_manager.get_slide_height_inches()
+        if h is not None:
+            return h
+        if self.prs:
+            return getattr(self.prs.slide_height, "inches", float(self.prs.slide_height) / 914400.0)
+        return 7.5
+
+    def _margin_inches(self) -> float:
+        """템플릿 title 플레이스홀더 left 또는 design_system spacing. 하드코딩 최소화."""
+        g = self.template_manager.get_placeholder_geometry("title")
+        if g and "left" in g and g["left"] > 0:
+            return g["left"]
+        spacing = self.design.get("spacing", {})
+        m = spacing.get("margin")
+        if m is not None and hasattr(m, "inches"):
+            return m.inches
+        return 0.5
+
+    def _content_width_inches(self) -> float:
+        """템플릿 title width 또는 슬라이드 - 2*여백."""
+        g = self.template_manager.get_placeholder_geometry("title")
+        if g and "width" in g and g["width"] > 0:
+            return g["width"]
+        return self._slide_width_inches() - 2 * self._margin_inches()
+
+    def _content_height_inches(self) -> float:
+        """슬라이드 높이 - 2*여백 (템플릿 추출값 기반)."""
+        return self._slide_height_inches() - 2 * self._margin_inches()
+
     def _safe_layout_index(self, layout_name: str, fallback_index: int = 0) -> int:
         """템플릿 레이아웃 개수 내로 인덱스 보정 (slide layout index out of range 방지)."""
         layout_idx = self.template_manager.get_layout_index(layout_name)
@@ -226,10 +266,15 @@ class PPTXGenerator:
         if rows_count < 2 or cols_count < 1:
             return
 
-        left = Inches(0.5)
-        top = Inches(1.5)
-        width = Inches(12.33)
-        height = Inches(min(0.5 * rows_count, 5.5))
+        margin = self._margin_inches()
+        cw = self._content_width_inches()
+        sh = self._slide_height_inches()
+        top_inch = margin + 1.2
+        max_table_h = max(1.5, sh - 2 * margin - 1.2 - 0.9)
+        left = Inches(margin)
+        top = Inches(top_inch)
+        width = Inches(cw)
+        height = Inches(min(0.5 * rows_count, max_table_h))
 
         table = slide.shapes.add_table(
             rows_count, cols_count, left, top, width, height
@@ -304,16 +349,24 @@ class PPTXGenerator:
         # 메인 제목
         self._add_title_textbox(slide, title)
 
+        margin = self._margin_inches()
+        cw = self._content_width_inches()
+        sh = self._slide_height_inches()
+        col_top = margin + 1.2
+        col_h = max(2.0, sh - 2 * margin - 1.2 - 0.9)
+        half = (cw - 0.2) / 2
         # 왼쪽 열
         left_box = slide.shapes.add_textbox(
-            Inches(0.5), Inches(1.5), Inches(5.9), Inches(5.5)
+            Inches(margin), Inches(col_top), Inches(half), Inches(col_h)
         )
+        left_box.text_frame.word_wrap = True
         self._fill_column(left_box, left_title, left_bullets)
 
         # 오른쪽 열
         right_box = slide.shapes.add_textbox(
-            Inches(6.93), Inches(1.5), Inches(5.9), Inches(5.5)
+            Inches(margin + half + 0.2), Inches(col_top), Inches(half), Inches(col_h)
         )
+        right_box.text_frame.word_wrap = True
         self._fill_column(right_box, right_title, right_bullets)
 
         if key_message:
@@ -331,30 +384,57 @@ class PPTXGenerator:
         logger.info(f"PPTX 저장 완료: {output_path}")
 
     def _add_title_textbox(self, slide, title: str) -> None:
-        """슬라이드에 제목 텍스트박스 추가"""
-        left = Inches(0.5)
-        top = Inches(0.3)
-        width = Inches(12.33)
-        height = Inches(1)
+        """슬라이드에 제목 텍스트박스 추가. 위치/크기/폰트는 템플릿에서 추출한 값만 사용."""
+        g = self.template_manager.get_placeholder_geometry("title")
+        if g:
+            left = Inches(g["left"])
+            top = Inches(g["top"])
+            width = Inches(g["width"])
+            height = Inches(g["height"])
+        else:
+            margin = self._margin_inches()
+            cw = self._content_width_inches()
+            sh = self._slide_height_inches()
+            left = Inches(margin)
+            top = Inches(margin * 0.6)
+            width = Inches(cw)
+            height = Inches(min(1.0, sh * 0.12))
 
         textbox = slide.shapes.add_textbox(left, top, width, height)
         tf = textbox.text_frame
+        tf.word_wrap = True
         p = tf.paragraphs[0]
         p.text = title
         self._apply_title_format(p)
+        if g:
+            if g.get("font_name"):
+                p.font.name = g["font_name"]
+            if g.get("font_size_pt") is not None:
+                p.font.size = Pt(g["font_size_pt"])
 
     def _add_key_message(self, slide, message: str) -> None:
-        """슬라이드 하단에 핵심 메시지 추가"""
-        left = Inches(0.5)
-        top = Inches(6.5)
-        width = Inches(12.33)
-        height = Inches(0.7)
+        """슬라이드 하단에 핵심 메시지 추가. 위치/크기는 템플릿 body 또는 슬라이드 기준으로만."""
+        body = self.template_manager.get_placeholder_geometry("body")
+        margin = self._margin_inches()
+        sh = self._slide_height_inches()
+        cw = self._content_width_inches()
+        if body and body.get("height"):
+            msg_height = min(0.7, body.get("height", 0.7))
+            top = sh - margin - msg_height
+        else:
+            msg_height = min(0.7, sh * 0.1)
+            top = sh - margin - msg_height
+        left = Inches(margin)
+        width = Inches(cw)
+        height = Inches(msg_height)
 
-        textbox = slide.shapes.add_textbox(left, top, width, height)
+        textbox = slide.shapes.add_textbox(left, Inches(top), width, height)
         tf = textbox.text_frame
+        tf.word_wrap = True
         p = tf.paragraphs[0]
         p.text = f">> {message}"
-        p.font.size = self.template_manager.get_font_size("body")
+        p.font.size = self.template_manager.get_font_size("small")
+        p.font.name = self.template_manager.get_font_name("body")
         p.font.bold = True
         p.font.color.rgb = self.template_manager.get_color("accent")
         p.alignment = PP_ALIGN.LEFT
@@ -375,11 +455,11 @@ class PPTXGenerator:
         paragraph.font.color.rgb = self.template_manager.get_color(color_name)
 
     def _format_table_cell(self, cell, is_header: bool = False) -> None:
-        """테이블 셀 포맷 적용"""
+        """테이블 셀 포맷 적용 (템플릿 폰트)."""
         cell.vertical_anchor = MSO_ANCHOR.MIDDLE
 
         for paragraph in cell.text_frame.paragraphs:
-            paragraph.font.size = Pt(11)
+            paragraph.font.size = self.template_manager.get_font_size("caption")
             paragraph.font.name = self.template_manager.get_font_name("body")
             paragraph.font.bold = is_header
             paragraph.alignment = PP_ALIGN.CENTER
@@ -843,47 +923,55 @@ class PPTXGenerator:
         slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
-        # 다크 배경
+        sw = self._slide_width_inches()
+        sh = self._slide_height_inches()
+        margin = self._margin_inches()
+        cw = self._content_width_inches()
+
+        # 다크 배경 (슬라이드 전체)
         bg = slide.shapes.add_shape(
             MSO_SHAPE.RECTANGLE,
             Inches(0),
             Inches(0),
-            Inches(13.33),
-            Inches(7.5),
+            Inches(sw),
+            Inches(sh),
         )
         bg.fill.solid()
         bg.fill.fore_color.rgb = self.template_manager.get_color(background_color or "dark_blue")
         bg.line.fill.background()
 
-        # 메인 헤드라인
+        # 메인 헤드라인 (템플릿 폰트·크기, 슬라이드 내부)
         headline_box = slide.shapes.add_textbox(
-            Inches(1.0),
-            Inches(2.5),
-            Inches(11.33),
-            Inches(2.0),
+            Inches(margin),
+            Inches(margin + 1.0),
+            Inches(cw),
+            Inches(min(2.0, sh * 0.3)),
         )
         headline_tf = headline_box.text_frame
         headline_tf.word_wrap = True
         headline_p = headline_tf.paragraphs[0]
         headline_p.text = headline
-        headline_p.font.size = Pt(54)
+        headline_p.font.size = self.template_manager.get_font_size("cover_title")
+        headline_p.font.name = self.template_manager.get_font_name("title")
         headline_p.font.bold = True
         headline_p.font.color.rgb = RGBColor(255, 255, 255)
         headline_p.alignment = PP_ALIGN.CENTER
 
         # 서브 헤드라인
         if subheadline:
+            sub_top = margin + 1.0 + min(2.0, sh * 0.3) + 0.3
             sub_box = slide.shapes.add_textbox(
-                Inches(1.0),
-                Inches(4.5),
-                Inches(11.33),
-                Inches(1.0),
+                Inches(margin),
+                Inches(min(sub_top, sh - 1.2)),
+                Inches(cw),
+                Inches(min(1.0, sh - sub_top - margin)),
             )
             sub_tf = sub_box.text_frame
             sub_tf.word_wrap = True
             sub_p = sub_tf.paragraphs[0]
             sub_p.text = subheadline
-            sub_p.font.size = Pt(24)
+            sub_p.font.size = self.template_manager.get_font_size("subtitle")
+            sub_p.font.name = self.template_manager.get_font_name("body")
             sub_p.font.color.rgb = self.template_manager.get_color("sky_blue")
             sub_p.alignment = PP_ALIGN.CENTER
 
@@ -907,59 +995,74 @@ class PPTXGenerator:
         slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
-        # 다크 배경
+        sw = self._slide_width_inches()
+        sh = self._slide_height_inches()
+        margin = self._margin_inches()
+        cw = self._content_width_inches()
+
+        # 다크 배경 (슬라이드 전체)
         bg = slide.shapes.add_shape(
             MSO_SHAPE.RECTANGLE,
             Inches(0),
             Inches(0),
-            Inches(13.33),
-            Inches(7.5),
+            Inches(sw),
+            Inches(sh),
         )
         bg.fill.solid()
         bg.fill.fore_color.rgb = self.template_manager.get_color("dark_blue")
         bg.line.fill.background()
 
-        # Phase 번호 (큰 아웃라인 숫자)
+        # Phase 번호 (템플릿 폰트, 슬라이드 내부)
+        num_w, num_h = 2.5, min(2.5, sh * 0.35)
         num_box = slide.shapes.add_textbox(
-            Inches(1.0),
-            Inches(2.0),
-            Inches(3.0),
-            Inches(3.0),
+            Inches(margin),
+            Inches(margin + 0.5),
+            Inches(num_w),
+            Inches(num_h),
         )
         num_tf = num_box.text_frame
+        num_tf.word_wrap = True
         num_p = num_tf.paragraphs[0]
         num_p.text = f"0{phase_number}" if phase_number < 10 else str(phase_number)
-        num_p.font.size = Pt(120)
+        num_p.font.size = self.template_manager.get_font_size("part_title")
+        num_p.font.name = self.template_manager.get_font_name("title")
         num_p.font.bold = True
         num_p.font.color.rgb = self.template_manager.get_color("sky_blue")
         num_p.alignment = PP_ALIGN.CENTER
 
-        # Phase 제목
+        # Phase 제목 (템플릿 폰트)
+        title_left = margin + num_w + 0.3
+        title_width = cw - num_w - 0.3
         title_box = slide.shapes.add_textbox(
-            Inches(4.5),
-            Inches(2.8),
-            Inches(8.0),
-            Inches(1.5),
+            Inches(title_left),
+            Inches(margin + 0.8),
+            Inches(title_width),
+            Inches(min(1.2, sh * 0.2)),
         )
         title_tf = title_box.text_frame
+        title_tf.word_wrap = True
         title_p = title_tf.paragraphs[0]
         title_p.text = phase_title
-        title_p.font.size = Pt(44)
+        title_p.font.size = self.template_manager.get_font_size("slide_title")
+        title_p.font.name = self.template_manager.get_font_name("title")
         title_p.font.bold = True
         title_p.font.color.rgb = RGBColor(255, 255, 255)
 
         # Phase 서브타이틀
         if phase_subtitle:
+            sub_top = margin + 0.8 + min(1.2, sh * 0.2) + 0.2
             sub_box = slide.shapes.add_textbox(
-                Inches(4.5),
-                Inches(4.3),
-                Inches(8.0),
-                Inches(1.0),
+                Inches(title_left),
+                Inches(min(sub_top, sh - margin - 0.8)),
+                Inches(title_width),
+                Inches(min(0.8, sh - sub_top - margin)),
             )
             sub_tf = sub_box.text_frame
+            sub_tf.word_wrap = True
             sub_p = sub_tf.paragraphs[0]
             sub_p.text = phase_subtitle
-            sub_p.font.size = Pt(20)
+            sub_p.font.size = self.template_manager.get_font_size("caption")
+            sub_p.font.name = self.template_manager.get_font_name("body")
             sub_p.font.color.rgb = RGBColor(180, 180, 180)
 
         # 발표자 노트 추가
@@ -981,14 +1084,19 @@ class PPTXGenerator:
         slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
+        sw = self._slide_width_inches()
+        sh = self._slide_height_inches()
+        margin = self._margin_inches()
+        cw = self._content_width_inches()
+
         # 배경 (그라데이션 효과는 단색으로 대체)
         if background_style == "dark":
             bg = slide.shapes.add_shape(
                 MSO_SHAPE.RECTANGLE,
                 Inches(0),
                 Inches(0),
-                Inches(13.33),
-                Inches(7.5),
+                Inches(sw),
+                Inches(sh),
             )
             bg.fill.solid()
             bg.fill.fore_color.rgb = self.template_manager.get_color("dark_blue")
@@ -997,35 +1105,41 @@ class PPTXGenerator:
         else:
             text_color = self.template_manager.get_color("dark_blue")
 
-        # 핵심 메시지
+        # 핵심 메시지 (슬라이드 내부, 템플릿 폰트)
+        msg_top = margin + (sh - 2 * margin) * 0.25
+        msg_h = min(2.0, (sh - 2 * margin) * 0.35)
         msg_box = slide.shapes.add_textbox(
-            Inches(1.0),
-            Inches(2.5),
-            Inches(11.33),
-            Inches(2.5),
+            Inches(margin),
+            Inches(msg_top),
+            Inches(cw),
+            Inches(msg_h),
         )
         msg_tf = msg_box.text_frame
         msg_tf.word_wrap = True
         msg_p = msg_tf.paragraphs[0]
         msg_p.text = message
-        msg_p.font.size = Pt(40)
+        msg_p.font.size = self.template_manager.get_font_size("part_title")
+        msg_p.font.name = self.template_manager.get_font_name("title")
         msg_p.font.bold = True
         msg_p.font.color.rgb = text_color
         msg_p.alignment = PP_ALIGN.CENTER
 
-        # 보조 텍스트
+        # 보조 텍스트 (슬라이드 내부, 템플릿 폰트)
         if supporting_text:
+            sup_top = msg_top + msg_h + 0.3
+            sup_h = min(1.2, sh - margin - sup_top - 0.3)
             sup_box = slide.shapes.add_textbox(
-                Inches(1.5),
-                Inches(5.0),
-                Inches(10.33),
-                Inches(1.5),
+                Inches(margin),
+                Inches(sup_top),
+                Inches(cw),
+                Inches(sup_h),
             )
             sup_tf = sup_box.text_frame
             sup_tf.word_wrap = True
             sup_p = sup_tf.paragraphs[0]
             sup_p.text = supporting_text
-            sup_p.font.size = Pt(18)
+            sup_p.font.size = self.template_manager.get_font_size("subtitle")
+            sup_p.font.name = self.template_manager.get_font_name("body")
             sup_p.font.color.rgb = self.template_manager.get_color("sky_blue") if background_style == "dark" else self.template_manager.get_color("text_gray")
             sup_p.alignment = PP_ALIGN.CENTER
 
@@ -1860,13 +1974,17 @@ class PPTXGenerator:
             kpi_name_p.font.size = Pt(11)
             kpi_name_p.font.color.rgb = RGBColor(200, 200, 200)
 
-        # 프로젝트 설명 (아래)
+        # 프로젝트 설명 (아래, 슬라이드 경계 내)
         desc = case.get("description", case.get("overview", ""))
         if desc:
+            margin = self._margin_inches()
+            cw = self._content_width_inches()
+            sh = self._slide_height_inches()
+            desc_top = sh - margin - 0.7
             desc_box = slide.shapes.add_textbox(
-                Inches(0.5),
-                Inches(6.7),
-                Inches(12.33),
+                Inches(margin),
+                Inches(desc_top),
+                Inches(cw),
                 Inches(0.6),
             )
             desc_tf = desc_box.text_frame
@@ -1906,25 +2024,30 @@ class PPTXGenerator:
         slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
+        sh = self._slide_height_inches()
+        margin = self._margin_inches()
+        cw = self._content_width_inches()
+
         # 왼쪽 액센트 바
         accent_bar = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.15), Inches(7.5)
+            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.15), Inches(sh)
         )
         accent_bar.fill.solid()
         accent_bar.fill.fore_color.rgb = self.template_manager.get_color("primary")
         accent_bar.line.fill.background()
 
-        # 타이틀
-        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.4), Inches(8), Inches(0.6))
+        # 타이틀 (템플릿 폰트)
+        title_box = slide.shapes.add_textbox(Inches(margin), Inches(margin * 0.8), Inches(min(8, cw)), Inches(0.6))
         title_p = title_box.text_frame.paragraphs[0]
         title_p.text = "EXECUTIVE SUMMARY"
-        title_p.font.size = Pt(36)
+        title_p.font.size = self.template_manager.get_font_size("part_title")
+        title_p.font.name = self.template_manager.get_font_name("title")
         title_p.font.bold = True
         title_p.font.color.rgb = self.template_manager.get_color("primary")
 
         # 프로젝트 목표
         obj_bg = slide.shapes.add_shape(
-            MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.5), Inches(1.2), Inches(12.3), Inches(0.6)
+            MSO_SHAPE.ROUNDED_RECTANGLE, Inches(margin), Inches(1.2), Inches(cw), Inches(0.6)
         )
         obj_bg.fill.solid()
         obj_bg.fill.fore_color.rgb = self.template_manager.get_color("primary")
@@ -2033,19 +2156,24 @@ class PPTXGenerator:
         slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
+        sh = self._slide_height_inches()
+        margin = self._margin_inches()
+        cw = self._content_width_inches()
+
         # 왼쪽 액센트 바
         accent_bar = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.15), Inches(7.5)
+            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.15), Inches(sh)
         )
         accent_bar.fill.solid()
         accent_bar.fill.fore_color.rgb = self.template_manager.get_color("primary")
         accent_bar.line.fill.background()
 
-        # 타이틀
-        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.4), Inches(8), Inches(0.6))
+        # 타이틀 (템플릿 폰트)
+        title_box = slide.shapes.add_textbox(Inches(margin), Inches(margin * 0.8), Inches(min(8, cw)), Inches(0.6))
         title_p = title_box.text_frame.paragraphs[0]
         title_p.text = "NEXT STEP"
-        title_p.font.size = Pt(36)
+        title_p.font.size = self.template_manager.get_font_size("part_title")
+        title_p.font.name = self.template_manager.get_font_name("title")
         title_p.font.bold = True
         title_p.font.color.rgb = self.template_manager.get_color("primary")
 
@@ -2163,9 +2291,11 @@ class PPTXGenerator:
         slide_layout = self.prs.slide_layouts[safe_idx]
         slide = self.prs.slides.add_slide(slide_layout)
 
+        sw = self._slide_width_inches()
+        sh = self._slide_height_inches()
         # 다크 배경
         bg = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.33), Inches(7.5)
+            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(sw), Inches(sh)
         )
         bg.fill.solid()
         bg.fill.fore_color.rgb = self.template_manager.get_color("dark_bg")
