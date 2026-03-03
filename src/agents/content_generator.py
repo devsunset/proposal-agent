@@ -38,6 +38,20 @@ from config.proposal_types import get_config, get_phase_config, ProposalType as 
 
 logger = get_logger("content_generator")
 
+# 모델별 응답 키 통일: camelCase 등 → snake_case (공통 처리)
+TEASER_KEY_ALIASES = {
+    "mainSlogan": "main_slogan",
+    "subMessage": "sub_message",
+    "visualConcept": "visual_concept",
+    "keyVisuals": "key_visuals",
+}
+PHASE_KEY_ALIASES = {"winThemeKey": "win_theme_key"}
+SLIDE_KEY_ALIASES = {
+    "slideType": "slide_type",
+    "contentExamples": "content_examples",
+    "competitorComparison": "competitor_comparison",
+}
+
 
 class ContentGenerator(BaseAgent):
     """제안서 콘텐츠 생성 에이전트 (v3.6 - Impact-8 Framework + 설득 구조 강화)"""
@@ -260,6 +274,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         max_tokens = get_settings().llm_max_tokens_default
         response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
         teaser_data = self._extract_json(response)
+        teaser_data = self._normalize_json_keys(teaser_data, TEASER_KEY_ALIASES)
 
         slides = self._parse_slides(teaser_data.get("slides", []))
 
@@ -297,6 +312,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         max_tokens = max(default_tokens, 16384) if phase_num == 4 else default_tokens
         response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
         slides_data = self._extract_json(response)
+        slides_data = self._normalize_json_keys(slides_data, PHASE_KEY_ALIASES)
         slides = self._parse_slides(slides_data.get("slides", []))
 
         phase_content = PhaseContent(
@@ -585,11 +601,13 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
             return None
 
     def _parse_slides(self, slides_data: List[Dict]) -> List[SlideContent]:
-        """슬라이드 데이터 파싱"""
+        """슬라이드 데이터 파싱 (모델별 키 차이 정규화 포함)"""
         slides = []
 
         for slide_data in slides_data:
             try:
+                slide_data = dict(slide_data)
+                self._normalize_json_keys(slide_data, SLIDE_KEY_ALIASES)
                 slide_type_str = slide_data.get("slide_type", "content")
                 try:
                     slide_type = SlideType(slide_type_str)

@@ -409,6 +409,20 @@ class BaseAgent(ABC):
         logger.warning(f"JSON 추출 실패 (응답 일부: {preview}). {JSON_PARSE_FAILED_MESSAGE}")
         return {}
 
+    def _normalize_json_keys(
+        self, data: Dict[str, Any], alias_map: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """
+        모델별 응답 키 차이 흡수: camelCase 등 별칭을 snake_case로 복사 (기존 키 없을 때만).
+        Claude/Gemini/Groq 등 모델별로 키 명명이 달라도 공통 처리 가능.
+        """
+        if not data or not isinstance(data, dict):
+            return data
+        for alias_key, canonical_key in alias_map.items():
+            if alias_key in data and canonical_key not in data:
+                data[canonical_key] = data[alias_key]
+        return data
+
     def _truncate_text(self, text: str, max_chars: int = 30000) -> str:
         """텍스트 길이 제한"""
         if len(text) <= max_chars:

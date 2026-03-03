@@ -28,7 +28,17 @@ class ProposalOrchestrator:
 
     def __init__(self, api_key: Optional[str] = None):
         settings = get_settings()
-        self.api_key = api_key or settings.gemini_api_key
+        # 선택된 LLM provider에 맞는 API 키 사용 (모델 변경 시 사이드 이펙트 방지)
+        if api_key:
+            self.api_key = api_key
+        else:
+            p = settings.llm_provider
+            if p == "claude":
+                self.api_key = settings.anthropic_api_key or ""
+            elif p == "groq":
+                self.api_key = settings.groq_api_key or ""
+            else:
+                self.api_key = settings.gemini_api_key or ""
         self.rfp_analyzer = RFPAnalyzer(api_key=self.api_key)
         self.content_generator = ContentGenerator(api_key=self.api_key)
 

@@ -10,6 +10,26 @@ from ..utils.logger import get_logger
 
 logger = get_logger("rfp_analyzer")
 
+# 모델별 응답 키 통일: camelCase 등 → snake_case (공통 처리)
+RFP_KEY_ALIASES = {
+    "projectName": "project_name",
+    "clientName": "client_name",
+    "projectOverview": "project_overview",
+    "projectType": "project_type",
+    "keyRequirements": "key_requirements",
+    "technicalRequirements": "technical_requirements",
+    "evaluationCriteria": "evaluation_criteria",
+    "winThemeCandidates": "win_theme_candidates",
+    "evaluationStrategy": "evaluation_strategy",
+    "painPoints": "pain_points",
+    "hiddenNeeds": "hidden_needs",
+    "competitiveLandscape": "competitive_landscape",
+    "winningStrategy": "winning_strategy",
+    "differentiationPoints": "differentiation_points",
+    "keySuccessFactors": "key_success_factors",
+    "potentialRisks": "potential_risks",
+}
+
 
 class RFPAnalyzer(BaseAgent):
     """RFP 문서 분석 에이전트"""
@@ -153,6 +173,7 @@ class RFPAnalyzer(BaseAgent):
 
         # JSON 파싱 (실패 시 1회 재시도: 동일 RFP + JSON만 출력 재요청)
         analysis_data = self._extract_json(response)
+        analysis_data = self._normalize_json_keys(analysis_data, RFP_KEY_ALIASES)
         if not analysis_data:
             logger.warning("RFP 분석 1차 응답에서 JSON을 찾지 못함. JSON만 출력하도록 1회 재시도.")
             retry_user = (
@@ -164,6 +185,7 @@ class RFPAnalyzer(BaseAgent):
                 system_prompt, retry_user, max_tokens=get_settings().llm_max_tokens_default
             )
             analysis_data = self._extract_json(response)
+            analysis_data = self._normalize_json_keys(analysis_data, RFP_KEY_ALIASES)
         if not analysis_data:
             from .base_agent import JSON_PARSE_FAILED_MESSAGE
             raise ValueError(JSON_PARSE_FAILED_MESSAGE)
