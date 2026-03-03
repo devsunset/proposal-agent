@@ -145,7 +145,7 @@ def generate(
             "[bold]v3.0 - Impact-8 Framework[/bold]\n\n"
             f"[dim]LLM: {_llm_label} (콘텐츠 생성) | [회사명]: Modern 스타일 PPTX[/dim]",
             title="Proposal Agent",
-            border_style="cyan",
+            border_style="green",
         )
     )
 
@@ -242,7 +242,7 @@ async def _generate_async_impl(
         Panel(
             f"[bold]{_llm}[/bold] - Impact-8",
             title="[bold]Step 1: 콘텐츠 생성[/bold]",
-            border_style="green",
+            border_style="cyan",
         )
     )
 
