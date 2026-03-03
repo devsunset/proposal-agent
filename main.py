@@ -6,7 +6,7 @@ RFP 문서를 입력받아 PPTX 제안서를 자동 생성합니다.
 실제 수주 성공 제안서 분석을 기반으로 개선된 구조 적용.
 
 역할 분리:
-- Gemini: RFP 분석, 콘텐츠 생성 (Impact-8 Framework)
+- LLM (Claude / Gemini / Groq): RFP 분석, 콘텐츠 생성 (.env의 LLM_PROVIDER로 선택)
 - [회사명]: PPTX 변환, Modern 스타일 디자인 적용
 """
 
@@ -23,6 +23,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from config.settings import get_settings
 from src.orchestrators.proposal_orchestrator import ProposalOrchestrator
 from src.orchestrators.pptx_orchestrator import PPTXOrchestrator
 
@@ -50,7 +51,7 @@ PROPOSAL_TYPES = {
 def generate(
     rfp_path: Path = typer.Argument(
         ...,
-        help="RFP 문서 경로 (PDF/DOCX)",
+        help="RFP 문서 경로 (PDF/DOCX/TXT/PPTX)",
         exists=True,
         file_okay=True,
         dir_okay=False,
@@ -102,14 +103,27 @@ def generate(
     예시:
         python main.py generate input/rfp.pdf -n "[프로젝트명]" -c "[발주처명]" -t marketing_pr
     """
-    # API 키 확인 (Gemini)
-    api_key = os.getenv("GEMINI_API_KEY")
+    # API 키 확인 (LLM_PROVIDER에 따라 검사)
+    _settings = get_settings()
+    _p = _settings.llm_provider
+    if _p == "claude":
+        api_key = _settings.anthropic_api_key
+        key_name = "ANTHROPIC_API_KEY"
+        key_hint = "https://console.anthropic.com"
+    elif _p == "groq":
+        api_key = _settings.groq_api_key
+        key_name = "GROQ_API_KEY"
+        key_hint = "https://console.groq.com"
+    else:
+        api_key = _settings.gemini_api_key
+        key_name = "GEMINI_API_KEY"
+        key_hint = "https://aistudio.google.com/apikey"
     if not api_key:
         console.print(
             Panel(
-                "[red]GEMINI_API_KEY가 설정되지 않았습니다.[/red]\n\n"
-                ".env 파일에 API 키를 설정하거나 환경 변수로 설정해주세요.\n"
-                "예: export GEMINI_API_KEY=your-api-key",
+                f"[red]{key_name}가 설정되지 않았습니다.[/red]\n\n"
+                f".env에 LLM_PROVIDER={_p} 로 설정된 경우 해당 API 키가 필요합니다.\n"
+                f"예: {key_name}=your-api-key (발급: {key_hint})",
                 title="Error",
             )
         )
@@ -121,12 +135,13 @@ def generate(
         console.print(f"사용 가능한 유형: {', '.join(PROPOSAL_TYPES.keys())}")
         raise typer.Exit(1)
 
-    # 헤더 출력
+    # 헤더 출력 (사용 중인 LLM 표시)
+    _llm_label = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(_p, _p)
     console.print(
         Panel(
             "[bold cyan]입찰 제안서 자동 생성 에이전트[/bold cyan]\n"
             "[bold]v3.0 - Impact-8 Framework[/bold]\n\n"
-            "[dim]Gemini: 콘텐츠 생성 | [회사명]: Modern 스타일 PPTX[/dim]",
+            f"[dim]LLM: {_llm_label} (콘텐츠 생성) | [회사명]: Modern 스타일 PPTX[/dim]",
             title="Proposal Agent",
             border_style="cyan",
         )
@@ -144,8 +159,8 @@ def generate(
     # 출력 디렉토리 생성
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 비동기 실행
-    asyncio.run(
+    # 비동기 실행 (예외는 내부에서 잡아 반환해 Windows cp949 인코딩 오류 방지)
+    out = asyncio.run(
         _generate_async(
             rfp_path=rfp_path,
             project_name=project_name or "",
@@ -158,6 +173,17 @@ def generate(
             api_key=api_key,
         )
     )
+    if out[0] == "error":
+        err = out[1]
+        if "429" in str(err) or "할당량" in str(err):
+            msg = "Gemini API 할당량 초과(429). 잠시 후 재시도하거나 플랜/결제를 확인하세요."
+        else:
+            msg = "제안서 생성 실패. API 키, 네트워크, 로그를 확인하세요."
+        try:
+            print("제안서 생성 실패:", msg)
+        except Exception:
+            print("Proposal generation failed. Check API key and quota.")
+        raise typer.Exit(1)
 
 
 async def _generate_async(
@@ -171,10 +197,41 @@ async def _generate_async(
     save_json: bool,
     api_key: str,
 ):
-    """비동기 제안서 생성 (Impact-8 Framework)"""
+    """비동기 제안서 생성 (Impact-8 Framework). 성공 시 ('ok', None), 실패 시 ('error', exception) 반환."""
+    try:
+        return await _generate_async_impl(
+            rfp_path=rfp_path,
+            project_name=project_name,
+            client_name=client_name,
+            proposal_type=proposal_type,
+            company_data=company_data,
+            output_dir=output_dir,
+            template=template,
+            save_json=save_json,
+            api_key=api_key,
+        )
+    except Exception as e:
+        return ("error", e)
 
-    # Phase 1: 콘텐츠 생성 (Gemini)
-    console.print("\n[bold cyan]Phase 1: 콘텐츠 생성 (Gemini - Impact-8)[/bold cyan]")
+
+async def _generate_async_impl(
+    rfp_path: Path,
+    project_name: str,
+    client_name: str,
+    proposal_type: Optional[str],
+    company_data: Path,
+    output_dir: Path,
+    template: str,
+    save_json: bool,
+    api_key: str,
+):
+    """제안서 생성 실제 로직"""
+
+    # Phase 1: 콘텐츠 생성 (설정된 LLM)
+    _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
+        get_settings().llm_provider, "LLM"
+    )
+    console.print(f"\n[bold cyan]Phase 1: 콘텐츠 생성 ({_llm} - Impact-8)[/bold cyan]")
 
     proposal_orchestrator = ProposalOrchestrator(api_key=api_key)
 
@@ -259,6 +316,7 @@ async def _generate_async(
             border_style="green",
         )
     )
+    return ("ok", None)
 
 
 def _print_content_summary(summary: dict):
@@ -289,52 +347,90 @@ def _print_content_summary(summary: dict):
 def analyze(
     rfp_path: Path = typer.Argument(
         ...,
-        help="RFP 문서 경로 (PDF/DOCX)",
+        help="RFP 문서 경로 (PDF/DOCX/TXT/PPTX)",
         exists=True,
     ),
 ):
     """
     RFP 문서 분석만 수행 (PPTX 생성 없이)
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    _settings = get_settings()
+    _p = _settings.llm_provider
+    if _p == "claude":
+        api_key = _settings.anthropic_api_key
+        key_name = "ANTHROPIC_API_KEY"
+    elif _p == "groq":
+        api_key = _settings.groq_api_key
+        key_name = "GROQ_API_KEY"
+    else:
+        api_key = _settings.gemini_api_key
+        key_name = "GEMINI_API_KEY"
     if not api_key:
-        console.print("[red]GEMINI_API_KEY가 설정되지 않았습니다.[/red]")
+        console.print(f"[red]{key_name}가 설정되지 않았습니다. .env에서 LLM_PROVIDER={_p} 에 맞는 API 키를 설정하세요.[/red]")
         raise typer.Exit(1)
 
     console.print(f"\n[bold]RFP 분석:[/bold] {rfp_path}\n")
 
     from src.parsers.pdf_parser import PDFParser
     from src.parsers.docx_parser import DOCXParser
+    from src.parsers.txt_parser import TXTParser
+    from src.parsers.pptx_parser import PPTXParser
     from src.agents.rfp_analyzer import RFPAnalyzer
 
-    # 파싱
+    # 파싱 (확장자에 따라 파서 선택)
     suffix = rfp_path.suffix.lower()
     if suffix == ".pdf":
         parser = PDFParser()
-    else:
+    elif suffix in [".docx", ".doc"]:
         parser = DOCXParser()
+    elif suffix == ".txt":
+        parser = TXTParser()
+    elif suffix == ".pptx":
+        parser = PPTXParser()
+    else:
+        console.print(
+            f"[red]지원하지 않는 형식: {suffix}. "
+            "지원: .pdf, .docx, .doc, .txt, .pptx[/red]"
+        )
+        raise typer.Exit(1)
 
     parsed = parser.parse(rfp_path)
     console.print(f"파싱 완료: {len(parsed.get('raw_text', ''))} 문자\n")
 
-    # 분석
+    # 분석 (예외는 Progress 블록 안에서 잡아 반환해, Windows cp949 인코딩 오류 방지)
     async def _analyze():
         analyzer = RFPAnalyzer(api_key=api_key)
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("RFP 분석 중...", total=None)
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                task = progress.add_task("RFP 분석 중...", total=None)
 
-            def update_progress(p):
-                progress.update(task, description=p.get("message", "분석 중..."))
+                def update_progress(p):
+                    progress.update(task, description=p.get("message", "분석 중..."))
 
-            result = await analyzer.execute(parsed, progress_callback=update_progress)
+                result = await analyzer.execute(parsed, progress_callback=update_progress)
+            return ("ok", result)
+        except Exception as e:
+            return ("error", e)
 
-        return result
+    out = asyncio.run(_analyze())
+    if out[0] == "error":
+        e = out[1]
+        # Windows cp949 콘솔 인코딩 오류 방지: Rich 대신 print 사용, 메시지는 ASCII/한글만
+        if "429" in str(e) or "할당량" in str(e):
+            msg = "Gemini API 할당량 초과(429). 잠시 후 재시도하거나 플랜/결제를 확인하세요."
+        else:
+            msg = "Gemini API 호출 실패. API 키와 네트워크를 확인하세요."
+        try:
+            print("RFP 분석 실패:", msg)
+        except Exception:
+            print("RFP analysis failed. Check API key and quota.")
+        raise typer.Exit(1)
 
-    result = asyncio.run(_analyze())
+    result = out[1]
 
     # 결과 출력
     console.print(

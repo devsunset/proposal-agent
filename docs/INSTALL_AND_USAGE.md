@@ -8,11 +8,11 @@
 |------|----------|
 | **Python** | 3.10 이상 |
 | **pip** | 최신 버전 권장 |
-| **Gemini** | Google Gemini API 키 (CLI 방식 사용 시) |
+| **LLM API** | Claude / Gemini / Groq 중 하나의 API 키 (CLI 방식 사용 시, .env의 LLM_PROVIDER에 맞춤) |
 
 > **두 가지 방식으로 사용할 수 있습니다**
 > - **① AI 코드 어시스턴트 방식** — Cursor 등 AI 도구에게 말로 시키면 RFP 분석부터 PPTX 생성까지 알아서 처리합니다.
-> - **② CLI(API) 방식** — `python main.py generate` 명령어로 실행합니다. **Gemini API 키**가 필요합니다.
+> - **② CLI(API) 방식** — `python main.py generate` 명령어로 실행합니다. **.env에서 LLM_PROVIDER(claude/gemini/groq)와 해당 API 키**가 필요합니다.
 
 ---
 
@@ -43,7 +43,9 @@ pip install -r requirements.txt
 
 | 카테고리 | 패키지 | 용도 |
 |---------|--------|------|
+| AI | `anthropic` | Claude (Anthropic) API 호출 |
 | AI | `google-genai` | Gemini API 호출 |
+| AI | `groq` | Groq API 호출 |
 | 문서 파싱 | `pypdf`, `pdfplumber` | PDF 텍스트/테이블 추출 |
 | 문서 파싱 | `python-docx` | DOCX 파싱 |
 | PPTX 생성 | `python-pptx` | 파워포인트 생성 |
@@ -56,24 +58,22 @@ pip install -r requirements.txt
 
 > **① AI 코드 어시스턴트 방식**을 사용한다면 이 단계는 건너뛰세요. 해당 도구가 자체 인증을 처리합니다.
 
-```bash
-# .env.example을 복사하여 .env 생성
-cp .env.example .env
+`.env` 파일을 만들고, 사용할 LLM 하나를 선택한 뒤 해당 API 키를 입력합니다.
+
+**사용할 LLM 선택 (claude | gemini | groq):**
+
+```env
+LLM_PROVIDER=gemini
 ```
 
-`.env` 파일을 열고 API 키를 입력:
+**선택한 프로바이더에 맞는 키만 설정:**
 
-```
-GEMINI_API_KEY=여기에-Gemini-API-키-입력
-```
-
-또는 환경변수로 직접 설정:
-
-```bash
-export GEMINI_API_KEY="여기에-Gemini-API-키-입력"
-```
-
-> Gemini API 키는 [Google AI Studio](https://aistudio.google.com/apikey)에서 발급할 수 있습니다.
+- **Claude:** [Anthropic Console](https://console.anthropic.com)에서 발급  
+  `ANTHROPIC_API_KEY=...`, `ANTHROPIC_MODEL=claude-3-5-sonnet-20241022`
+- **Gemini:** [Google AI Studio](https://aistudio.google.com/apikey)에서 발급  
+  `GEMINI_API_KEY=...`, `GEMINI_MODEL=gemini-2.0-flash-lite`
+- **Groq:** [Groq Console](https://console.groq.com)에서 발급 (무료 한도 넉넉)  
+  `GROQ_API_KEY=...`, `GROQ_MODEL=llama-3.1-8b-instant`
 
 ---
 
@@ -103,7 +103,7 @@ AI가 자동으로 수행:
 
 ### 방법 ② CLI 명령어로 제안서 생성
 
-> Gemini API 키가 필요합니다 (2-4 단계 참조)
+> .env에 LLM_PROVIDER와 해당 API 키가 필요합니다 (2-4 단계 참조).
 
 #### 제안서 생성 (기본)
 
@@ -486,14 +486,14 @@ Win Theme 규칙은 `content_guidelines.txt`에서 조정:
 ### API 키 오류 (② CLI 방식만 해당)
 
 ```
-GEMINI_API_KEY가 설정되지 않았습니다.
+ANTHROPIC_API_KEY / GEMINI_API_KEY / GROQ_API_KEY가 설정되지 않았습니다.
 ```
 
-해결: `.env` 파일에 유효한 API 키가 있는지 확인
+해결: `.env`에서 `LLM_PROVIDER`와 선택한 프로바이더에 맞는 키가 있는지 확인
 
 ```bash
+# 예: LLM_PROVIDER=groq 이면 GROQ_API_KEY=... 필수
 cat .env
-# GEMINI_API_KEY=... 형태여야 함
 ```
 
 > ① AI 코드 어시스턴트 방식을 사용 중이라면 API 키가 필요하지 않으므로 이 오류는 발생하지 않습니다.
@@ -550,7 +550,7 @@ proposal-agent/
 │   ├── parsers/                   # PDF/DOCX 파싱
 │   │   ├── pdf_parser.py
 │   │   └── docx_parser.py
-│   ├── agents/                    # Gemini 에이전트
+│   ├── agents/                    # LLM 에이전트 (Claude/Gemini/Groq)
 │   │   ├── rfp_analyzer.py        # RFP 전략 분석
 │   │   └── content_generator.py   # 8-Phase 콘텐츠 생성
 │   ├── schemas/                   # Pydantic 데이터 모델
@@ -588,7 +588,7 @@ proposal-agent/
 [ ] Python 3.10+ 설치 확인
 [ ] git clone 완료
 [ ] pip install -r requirements.txt
-[ ] .env 파일에 GEMINI_API_KEY 설정
+[ ] .env에 LLM_PROVIDER(claude/gemini/groq)와 해당 *_API_KEY 설정
 [ ] input/ 폴더에 RFP PDF 배치
 [ ] python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처" 실행
 [ ] output/ 폴더에서 PPTX 결과물 확인

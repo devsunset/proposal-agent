@@ -1,7 +1,7 @@
 """
 제안서 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
 
-전체 워크플로우 조율: RFP 파싱 → Gemini 분석/생성 → JSON 출력
+전체 워크플로우 조율: RFP 파싱 → LLM(Claude/Gemini/Groq) 분석/생성 → JSON 출력
 """
 
 import json
@@ -10,6 +10,8 @@ from typing import Any, Callable, Dict, Optional
 
 from ..parsers.pdf_parser import PDFParser
 from ..parsers.docx_parser import DOCXParser
+from ..parsers.txt_parser import TXTParser
+from ..parsers.pptx_parser import PPTXParser
 from ..agents.rfp_analyzer import RFPAnalyzer
 from ..agents.content_generator import ContentGenerator
 from ..schemas.proposal_schema import ProposalContent, ProposalType
@@ -24,7 +26,7 @@ class ProposalOrchestrator:
     """
     제안서 콘텐츠 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
 
-    Gemini 레이어: RFP 분석 → 콘텐츠 생성
+    LLM 레이어(Claude/Gemini/Groq): RFP 분석 → 콘텐츠 생성 (.env LLM_PROVIDER로 선택)
     """
 
     def __init__(self, api_key: Optional[str] = None):
@@ -33,6 +35,8 @@ class ProposalOrchestrator:
 
         self.pdf_parser = PDFParser()
         self.docx_parser = DOCXParser()
+        self.txt_parser = TXTParser()
+        self.pptx_parser = PPTXParser()
         self.rfp_analyzer = RFPAnalyzer(api_key=self.api_key)
         self.content_generator = ContentGenerator(api_key=self.api_key)
 
@@ -150,15 +154,22 @@ class ProposalOrchestrator:
             raise
 
     def _parse_document(self, file_path: Path) -> Dict[str, Any]:
-        """파일 확장자에 따라 적절한 파서 선택"""
+        """파일 확장자에 따라 적절한 파서 선택 (PDF/DOCX/TXT/PPTX)"""
         suffix = file_path.suffix.lower()
 
         if suffix == ".pdf":
             return self.pdf_parser.parse(file_path)
         elif suffix in [".docx", ".doc"]:
             return self.docx_parser.parse(file_path)
+        elif suffix == ".txt":
+            return self.txt_parser.parse(file_path)
+        elif suffix == ".pptx":
+            return self.pptx_parser.parse(file_path)
         else:
-            raise ValueError(f"지원하지 않는 파일 형식: {suffix}")
+            raise ValueError(
+                f"지원하지 않는 파일 형식: {suffix}. "
+                "지원 형식: .pdf, .docx, .doc, .txt, .pptx"
+            )
 
     def _load_company_data(self, data_path: Path) -> Dict[str, Any]:
         """회사 데이터 로드"""

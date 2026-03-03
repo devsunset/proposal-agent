@@ -11,16 +11,19 @@ from typing import Any, Callable, Dict, List, Optional
 from .base_agent import BaseAgent
 from ..schemas.proposal_schema import (
     BulletPoint,
+    ChartData,
     KPIItem,
     KPIWithBasis,
     WinTheme,
     CompetitorComparison,
+    OrgChartNode,
     PhaseContent,
     ProposalContent,
     ProposalType,
     SlideContent,
     SlideType,
     TeaserContent,
+    TimelineItem,
     ContentExample,
     ChannelStrategy,
     CampaignPlan,
@@ -490,6 +493,75 @@ Phase {phase_num}: {self.PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 �
 """
         return user_message
 
+    def _normalize_chart(self, raw: Optional[Dict]) -> Optional[ChartData]:
+        """LLM이 type/labels/datasets 등으로 반환해도 ChartData로 변환"""
+        if not raw or not isinstance(raw, dict):
+            return None
+        try:
+            chart_type = raw.get("chart_type") or raw.get("type") or "bar"
+            title = raw.get("title") or ""
+            data = raw.get("data")
+            if data is None:
+                data = {k: v for k, v in raw.items() if k not in ("chart_type", "type", "title", "colors", "show_values", "show_legend")}
+            if not isinstance(data, dict):
+                data = {}
+            return ChartData(
+                chart_type=str(chart_type),
+                title=str(title),
+                data=data,
+                colors=raw.get("colors"),
+                show_values=raw.get("show_values", True),
+                show_legend=raw.get("show_legend", True),
+            )
+        except Exception as e:
+            logger.debug("chart 정규화 실패: %s", e)
+            return None
+
+    def _normalize_timeline(self, raw: Optional[List]) -> Optional[List[TimelineItem]]:
+        """타임라인 항목에 title 등 필수 필드 보완"""
+        if not raw or not isinstance(raw, list):
+            return None
+        out = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            try:
+                out.append(TimelineItem(
+                    phase=item.get("phase", ""),
+                    title=item.get("title") or item.get("phase") or "",
+                    duration=item.get("duration", ""),
+                    description=item.get("description"),
+                    milestones=item.get("milestones"),
+                    deliverables=item.get("deliverables"),
+                    color=item.get("color"),
+                ))
+            except Exception as e:
+                logger.debug("timeline 항목 스킵: %s", e)
+        return out if out else None
+
+    def _normalize_org_chart(self, raw: Optional[Dict]) -> Optional[OrgChartNode]:
+        """LLM이 { root: { name, role, children } } 형태로 반환해도 OrgChartNode로 변환"""
+        if not raw or not isinstance(raw, dict):
+            return None
+        node = raw.get("root") if "root" in raw else raw
+        if not isinstance(node, dict):
+            return None
+        try:
+            def to_node(n: Dict) -> OrgChartNode:
+                children = None
+                if n.get("children"):
+                    children = [to_node(c) for c in n["children"] if isinstance(c, dict)]
+                return OrgChartNode(
+                    name=n.get("name", ""),
+                    role=n.get("role", ""),
+                    expertise=n.get("expertise"),
+                    children=children,
+                )
+            return to_node(node)
+        except Exception as e:
+            logger.debug("org_chart 정규화 실패: %s", e)
+            return None
+
     def _parse_slides(self, slides_data: List[Dict]) -> List[SlideContent]:
         """슬라이드 데이터 파싱"""
         slides = []
@@ -505,26 +577,25 @@ Phase {phase_num}: {self.PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 �
                 # bullets 파싱
                 bullets = self._parse_bullets(slide_data.get("bullets"))
 
-                # KPIs 파싱 (v3.6: KPIWithBasis 우선, KPIItem 폴백)
+                # KPIs 파싱 (SlideContent.kpis는 List[KPIItem]만 허용 → 항상 KPIItem으로 변환)
                 kpis = None
                 if slide_data.get("kpis"):
                     kpis = []
                     for k in slide_data["kpis"]:
-                        if k.get("calculation_basis"):
-                            kpis.append(KPIWithBasis(
-                                metric=k.get("metric", ""),
-                                target=k.get("target", ""),
-                                baseline=k.get("baseline"),
-                                improvement=k.get("improvement"),
-                                calculation_basis=k.get("calculation_basis", ""),
-                                data_source=k.get("data_source"),
-                            ))
-                        else:
+                        if isinstance(k, dict):
                             kpis.append(KPIItem(
                                 metric=k.get("metric", ""),
                                 target=k.get("target", ""),
                                 baseline=k.get("baseline"),
                                 improvement=k.get("improvement"),
+                            ))
+                        else:
+                            # KPIWithBasis 등 모델 인스턴스 → KPIItem으로 변환
+                            kpis.append(KPIItem(
+                                metric=getattr(k, "metric", ""),
+                                target=getattr(k, "target", ""),
+                                baseline=getattr(k, "baseline", None),
+                                improvement=getattr(k, "improvement", None),
                             ))
 
                 # Competitor Comparisons 파싱
@@ -572,15 +643,20 @@ Phase {phase_num}: {self.PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 �
                         expected_results=cp.get("expected_results", []),
                     )
 
+                # 차트/타임라인/조직도 정규화 (LLM이 다른 필드명으로 반환하는 경우 대응)
+                chart = self._normalize_chart(slide_data.get("chart"))
+                timeline = self._normalize_timeline(slide_data.get("timeline"))
+                org_chart = self._normalize_org_chart(slide_data.get("org_chart"))
+
                 slide = SlideContent(
                     slide_type=slide_type,
                     title=slide_data.get("title", ""),
                     subtitle=slide_data.get("subtitle"),
                     bullets=bullets,
                     table=slide_data.get("table"),
-                    chart=slide_data.get("chart"),
-                    timeline=slide_data.get("timeline"),
-                    org_chart=slide_data.get("org_chart"),
+                    chart=chart,
+                    timeline=timeline,
+                    org_chart=org_chart,
                     left_content=self._parse_bullets(slide_data.get("left_content")),
                     right_content=self._parse_bullets(slide_data.get("right_content")),
                     center_content=self._parse_bullets(slide_data.get("center_content")),

@@ -12,9 +12,22 @@ load_dotenv()
 class Settings(BaseModel):
     """앱 설정"""
 
+    # LLM: claude | gemini | groq (.env의 LLM_PROVIDER로 선택)
+    llm_provider: str = os.getenv("LLM_PROVIDER", "gemini").lower().strip()
+
+    # API (Claude / Anthropic)
+    anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+
     # API (Gemini)
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
-    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+    # 429 방지: API 호출 간 대기(초). 무료 한도일 때 5~10 권장
+    gemini_delay_seconds: float = float(os.getenv("GEMINI_DELAY_SECONDS", "8"))
+
+    # API (Groq, 무료 티어 한도 넉넉함)
+    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
+    groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
     # Paths
     base_dir: Path = Path(__file__).parent.parent
