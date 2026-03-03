@@ -1,134 +1,136 @@
 # Proposal Agent — AI 입찰 제안서 자동 생성 에이전트
 
-RFP(제안요청서) PDF를 입력하면 **40~80장 PPTX 입찰 제안서**를 자동 생성하는 AI 에이전트 시스템
+RFP(제안요청서) PDF/DOCX/TXT/PPTX를 입력하면 **Impact-8 구조의 PPTX 입찰 제안서**를 자동 생성하는 AI 에이전트 시스템
 
 ## 핵심 특징
 
-- **Impact-8 Framework**: 실제 수주 성공 제안서 분석을 기반으로 도출한 8-Phase 구조
-- **Win Theme 전달 체인**: Phase 1에서 확정한 3대 Win Theme이 전체 제안서에 일관 반복
-- **C-E-I 설득 구조**: Claim(주장) → Evidence(근거) → Impact(영향) 3단계 설득 로직
-- **Action Title**: 모든 슬라이드에 인사이트 기반 제목 자동 적용
-- **slide_kit.py 엔진**: 2,270줄 PPTX 렌더링 엔진 (20가지 레이아웃, 네이티브 차트, VStack 자동 배치)
+- **Impact-8 Framework**: 실제 수주 성공 제안서 분석 기반 8-Phase 구조 (Phase 0 HOOK ~ Phase 7 INVESTMENT & ROI)
+- **다중 LLM 지원**: .env의 `LLM_PROVIDER`로 **Claude / Gemini / Groq** 중 선택
+- **Win Theme 전달**: Phase 1에서 확정한 Win Theme이 전체 제안서에 일관 반영
+- **Modern 스타일 PPTX**: TemplateManager 디자인 시스템 + python-pptx 기반 렌더링 (pptx_generator, chart_generator, diagram_generator)
 
 ## 빠른 시작
 
 ### ① AI 코드 어시스턴트 방식 (권장)
 
 ```bash
-# 의존성 설치
 pip install -r requirements.txt
 ```
 
-AI 코드 어시스턴트(Cursor 등)에게 자연어로 요청하면 끝:
+AI 코드 어시스턴트(Cursor 등)에게 자연어로 요청:
 
 ```
 "input 폴더의 RFP를 분석한 후 제안서를 제작해줘"
 ```
 
-### ② CLI(API) 방식
+### ② CLI 방식
 
 ```bash
-# 의존성 설치
 pip install -r requirements.txt
 
-# .env 설정 (API 방식만 필요)
-echo "GEMINI_API_KEY=your-gemini-api-key" > .env
+# .env 설정 (루트에 .env.example 복사 후 값 입력)
+cp .env.example .env
+# LLM_PROVIDER=gemini | claude | groq 및 해당 *_API_KEY 설정
+```
 
-# 제안서 생성
-python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처명"
+# 제안서 생성 (RFP: PDF/DOCX/TXT/PPTX)
+python main.py generate input/sample.txt -n "프로젝트명" -c "발주처명"
 
-# 프로젝트 유형 지정
+# 제안서 유형 지정
 python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처" -t marketing_pr
 ```
 
 ## 파이프라인
 
 ```
-RFP (PDF)
+RFP (PDF/DOCX/TXT/PPTX)
     │
     ▼
-STEP 1: PDF 파싱 (pypdf + pdfplumber)
+STEP 1: 문서 파싱 (확장자별 파서)
     │
     ▼
-STEP 2: RFP 전략 분석 (Gemini)
-    ├─ Pain Point 추출
-    ├─ Win Theme 후보 3개 도출
-    └─ 평가 기준 → 제안서 강조 포인트
+STEP 2: RFP 분석 (LLM: Claude / Gemini / Groq)
+    ├─ 프로젝트명·발주처 추출
+    ├─ 핵심 요구사항·평가 기준
+    └─ 제안서 유형 자동 판별
     │
     ▼
-STEP 3: 콘텐츠 생성 (Gemini × 8 Phase)
-    ├─ Win Theme 전달 체인
-    ├─ Action Title + C-E-I 설득 구조
-    └─ KPI + 산출 근거
+STEP 3: 콘텐츠 생성 (동일 LLM × 8 Phase)
+    ├─ Phase 0: HOOK (티저)
+    ├─ Phase 1~7: SUMMARY, INSIGHT, CONCEPT, ACTION PLAN, MANAGEMENT, WHY US, INVESTMENT & ROI
+    └─ Win Theme·KPI·슬라이드 구조
     │
     ▼
-STEP 4: PPTX 렌더링 (slide_kit.py)
-    └─ 40~80장 PPTX 출력
+STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator)
+    └─ output/프로젝트명_제안서.pptx
 ```
 
 ## Impact-8 Framework
 
-| Phase | 이름 | 비중 | 설명 |
-|-------|------|------|------|
-| 0 | HOOK | 5% | 임팩트 있는 오프닝 |
-| 1 | EXECUTIVE SUMMARY | 5% | 의사결정자용 요약 + Win Theme 정의 |
-| 2 | INSIGHT | 12% | 시장 환경 + Pain Point |
-| 3 | CONCEPT & STRATEGY | 12% | 핵심 컨셉 + 차별화 전략 |
-| 4 | ACTION PLAN | **40%** | 상세 실행 계획 (핵심) |
-| 5 | MANAGEMENT | 8% | 조직 + 운영 + 품질관리 |
-| 6 | WHY US | 12% | 수행 역량 + 실적 |
-| 7 | INVESTMENT & ROI | 6% | 비용 + 기대효과 |
+| Phase | 이름 | 설명 |
+|-------|------|------|
+| 0 | HOOK | 임팩트 있는 오프닝 |
+| 1 | SUMMARY | 5분 핵심 요약 + Win Theme |
+| 2 | INSIGHT | 시장/문제 분석 |
+| 3 | CONCEPT & STRATEGY | 전략/차별화 |
+| 4 | ACTION PLAN | 상세 실행계획 (★핵심, 40% 비중) |
+| 5 | MANAGEMENT | 운영/품질 |
+| 6 | WHY US | 수행역량 |
+| 7 | INVESTMENT & ROI | 비용/효과 |
 
-## 프로젝트 유형별 자동 적응
+## 프로젝트 유형
 
-| 유형 | Phase 4 비중 | 특화 콘텐츠 |
-|------|-------------|-------------|
-| 마케팅/PR | 40% | 채널별 전략, 콘텐츠 예시, 인플루언서 |
-| 이벤트 | 45% | 공간 설계, 프로그램표, 참가자 여정 |
-| IT/시스템 | 35% | 시스템 아키텍처, WBS, 간트 |
-| 공공 | 30% | RFP 대응표, 정책 연계 |
-| 컨설팅 | 30% | 전략 프레임워크, 벤치마킹 |
+| 유형 (`-t`) | 설명 |
+|-------------|------|
+| marketing_pr | 마케팅/PR/소셜미디어 |
+| event | 이벤트/행사 |
+| it_system | IT/시스템 |
+| public | 공공/입찰 |
+| consulting | 컨설팅 |
+| general | 일반 (미지정 시 자동 판별) |
 
 ## 디렉토리 구조
 
 ```
-├── main.py                        # CLI 엔트리포인트
-├── requirements.txt
+├── main.py                     # CLI 엔트리포인트 (generate, analyze, types, info, templates)
+├── .env.example                # 환경 변수 예시 (복사 후 .env로 사용)
 ├── config/
-│   ├── proposal_types.py          # 제안서 유형별 설정
-│   ├── design/
-│   │   └── design_style.py           # 디자인 시스템
-│   └── prompts/                   # Phase별 프롬프트 (9개)
+│   ├── settings.py             # API 키·LLM 선택·경로·재시도/토큰 설정
+│   ├── proposal_types.py       # 제안서 유형 6종·가중치 (get_type_display_name)
+│   └── prompts/                # Phase별 프롬프트 (phase0_hook ~ phase7_investment)
 ├── src/
-│   ├── parsers/                   # PDF/DOCX 파싱
-│   ├── agents/                    # Gemini 에이전트
-│   │   ├── rfp_analyzer.py        # RFP 전략 분석
-│   │   └── content_generator.py   # 8-Phase 콘텐츠 생성
-│   ├── schemas/                   # Pydantic 데이터 모델
-│   ├── generators/
-│   │   ├── slide_kit.py           # PPTX 렌더링 엔진 (2,270줄)
-│   │   └── pptx_generator.py      # 스키마 → PPTX 변환
-│   └── orchestrators/             # 워크플로우 조율
-└── docs/                          # 가이드 문서
+│   ├── parsers/                # PDF, DOCX, TXT, PPTX 파싱 (get_parser_for_path)
+│   ├── agents/                 # base_agent, rfp_analyzer, content_generator
+│   ├── schemas/                # proposal_schema, rfp_schema (Pydantic)
+│   ├── generators/             # template_manager, pptx_generator, chart_generator, diagram_generator
+│   ├── orchestrators/          # proposal_orchestrator, pptx_orchestrator
+│   └── utils/                  # logger, path_utils (safe_filename, safe_output_path)
+├── tests/                      # pytest (parsers, path_utils, settings, template_manager 등)
+├── templates/                  # PPTX 템플릿 (선택, .gitignore 대상)
+├── company_data/               # 회사 정보 JSON (기본: company_profile.json)
+├── input/                      # RFP 입력
+├── output/                     # 생성된 PPTX (프로젝트명_제안서.pptx)
+└── docs/                       # 가이드 문서
 ```
 
 ## 기술 스택
 
 | 카테고리 | 기술 |
 |---------|------|
-| AI | Gemini (Google Gemini API) |
-| 문서 처리 | pypdf, pdfplumber, python-pptx |
+| AI | Claude (Anthropic) / Gemini (Google) / Groq (.env LLM_PROVIDER로 선택) |
+| 문서 파싱 | pypdf, pdfplumber, python-docx, python-pptx |
+| PPTX 생성 | python-pptx, TemplateManager 디자인 시스템 |
 | 데이터 | Pydantic v2, JSON |
 | CLI | Typer, Rich |
 
 ## 가이드 문서
 
-- [설치 및 사용 가이드](docs/INSTALL_AND_USAGE.md) — 설치부터 실행까지 단계별 안내
-- [에이전트 구축 방식 · 시스템 구조](docs/입찰제안서_에이전트_가이드.md) — 아키텍처 및 설계 원리
-- [상세 사용 가이드](docs/제안서_에이전트_사용_가이드.md) — 고급 사용법 및 커스터마이징
-- [기술 문서](docs/PROPOSAL_AGENT_GUIDE.md) — API 및 스키마 레퍼런스
+- [실행 가이드](docs/실행_가이드.md) — 설치·설정·실행 (Claude/Gemini/Groq)
+- [설치 및 사용 가이드](docs/INSTALL_AND_USAGE.md) — 단계별 설치·사용법
+- [에이전트 구축·시스템 구조](docs/입찰제안서_에이전트_가이드.md) — 아키텍처 및 설계
+- [상세 사용 가이드](docs/제안서_에이전트_사용_가이드.md) — 고급 사용·커스터마이징
+- [기술 문서](docs/PROPOSAL_AGENT_GUIDE.md) — API·스키마 레퍼런스
 
 ## 버전
 
-- **v3.6**: Win Theme 전달 체인 + Action Title 강제 + C-E-I 설득 구조 + KPIWithBasis
-- **v3.5**: VStack 자동 배치 + 네이티브 차트 + 테마 시스템 + 20가지 레이아웃
+- **v3.0**: Impact-8 Framework, 다중 LLM(Claude/Gemini/Groq), TemplateManager + pptx/chart/diagram generator, get_parser_for_path, safe_output_path, Phase 2~7 병렬 생성, pytest 테스트

@@ -7,7 +7,7 @@ PPTX 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
 from pathlib import Path
 from typing import Callable, List, Optional
 
-from ..schemas.proposal_schema import ProposalContent, PhaseContent, SlideContent, TeaserContent
+from ..schemas.proposal_schema import ProposalContent, PhaseContent, SlideContent, TeaserContent, PHASE_TITLES
 from ..generators.template_manager import TemplateManager
 from ..generators.pptx_generator import PPTXGenerator
 from ..generators.chart_generator import ChartGenerator
@@ -32,18 +32,6 @@ class PPTXOrchestrator:
     [회사명] 레이어: LLM 콘텐츠 → Modern 스타일 PPTX
     """
 
-    # Impact-8 Phase 제목
-    PHASE_TITLES = {
-        0: "HOOK",
-        1: "SUMMARY",
-        2: "INSIGHT",
-        3: "CONCEPT & STRATEGY",
-        4: "ACTION PLAN",
-        5: "MANAGEMENT",
-        6: "WHY US",
-        7: "INVESTMENT & ROI",
-    }
-
     def __init__(self, templates_dir: Optional[Path] = None):
         settings = get_settings()
         self.templates_dir = templates_dir or settings.templates_dir
@@ -57,7 +45,7 @@ class PPTXOrchestrator:
         self,
         content: ProposalContent,
         output_path: Path,
-        template_name: str = "modern",
+        template_name: str = "guide_template",
         progress_callback: Optional[Callable] = None,
     ) -> Path:
         """
@@ -98,7 +86,7 @@ class PPTXOrchestrator:
             # Step 2~8: Phase 슬라이드 생성 (Impact-8 구조)
             for phase in content.phases:
                 current_step += 1
-                phase_title = self.PHASE_TITLES.get(phase.phase_number, phase.phase_title)
+                phase_title = PHASE_TITLES.get(phase.phase_number, phase.phase_title)
 
                 if progress_callback:
                     progress_callback({
@@ -482,10 +470,12 @@ class PPTXOrchestrator:
                 _fallback_content()
         except (TypeError, AttributeError, ValueError) as e:
             logger.warning(
-                "슬라이드 유형 %s 처리 실패(%s), 콘텐츠 슬라이드로 대체: %s",
+                "슬라이드 처리 실패 → 콘텐츠로 대체 | type=%s phase=%s title=%s | %s: %s",
                 slide_type,
+                phase_number,
+                (slide.title or "")[:50],
                 type(e).__name__,
-                str(e)[:200],
+                str(e)[:150],
             )
             _fallback_content()
 

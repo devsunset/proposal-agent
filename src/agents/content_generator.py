@@ -5,6 +5,7 @@
 v3.6: Win Theme 전달 체인, Action Title 강제, C-E-I 설득 로직, KPIWithBasis
 """
 
+import asyncio
 import json
 from typing import Any, Callable, Dict, List, Optional
 
@@ -28,6 +29,7 @@ from ..schemas.proposal_schema import (
     ChannelStrategy,
     CampaignPlan,
     PHASE_DEFINITIONS,
+    PHASE_TITLES,
     get_phase_weights,
 )
 from ..schemas.rfp_schema import RFPAnalysis
@@ -50,18 +52,6 @@ class ContentGenerator(BaseAgent):
         5: "phase5_management",
         6: "phase6_whyus",
         7: "phase7_investment",
-    }
-
-    # Impact-8 Phase 제목
-    PHASE_TITLES = {
-        0: "HOOK",
-        1: "SUMMARY",
-        2: "INSIGHT",
-        3: "CONCEPT & STRATEGY",
-        4: "ACTION PLAN",
-        5: "MANAGEMENT",
-        6: "WHY US",
-        7: "INVESTMENT & ROI",
     }
 
     PHASE_SUBTITLES = {
@@ -117,7 +107,7 @@ class ContentGenerator(BaseAgent):
             progress_callback({
                 "step": 0,
                 "total": 8,
-                "message": f"Phase 0: {self.PHASE_TITLES[0]} 생성 중...",
+                "message": f"Phase 0: {PHASE_TITLES[0]} 생성 중...",
             })
 
         teaser = await self._generate_teaser(
@@ -134,7 +124,7 @@ class ContentGenerator(BaseAgent):
             progress_callback({
                 "step": 1,
                 "total": 8,
-                "message": f"Phase 1: {self.PHASE_TITLES[1]} 생성 중...",
+                "message": f"Phase 1: {PHASE_TITLES[1]} 생성 중...",
             })
 
         phase1_content, phase1_raw = await self._generate_phase_with_raw(
@@ -160,16 +150,15 @@ class ContentGenerator(BaseAgent):
                 win_themes = win_theme_candidates
                 logger.info(f"RFP Win Theme 후보 {len(win_themes)}개 사용 (폴백)")
 
-        # Phase 2~7 생성 (Win Theme 전달)
-        for phase_num in range(2, 8):
-            if progress_callback:
-                progress_callback({
-                    "step": phase_num,
-                    "total": 8,
-                    "message": f"Phase {phase_num}: {self.PHASE_TITLES[phase_num]} 생성 중...",
-                })
-
-            phase_content = await self._generate_phase(
+        # Phase 2~7 병렬 생성 (Win Theme 전달, API 한도 고려해 동시 실행)
+        if progress_callback:
+            progress_callback({
+                "step": 2,
+                "total": 8,
+                "message": "Phase 2~7 병렬 생성 중...",
+            })
+        phase_tasks = [
+            self._generate_phase(
                 phase_num=phase_num,
                 rfp_analysis=rfp_analysis,
                 company_data=input_data.get("company_data", {}),
@@ -177,10 +166,15 @@ class ContentGenerator(BaseAgent):
                 client_name=input_data["client_name"],
                 proposal_type=proposal_type,
                 weight=weights.get(phase_num, 0.1),
-                win_themes=win_themes,  # v3.6: Win Theme 전달
+                win_themes=win_themes,
             )
+            for phase_num in range(2, 8)
+        ]
+        phase_results = await asyncio.gather(*phase_tasks)
+        for phase_content in phase_results:
             phases.append(phase_content)
-            logger.info(f"Phase {phase_num}: {self.PHASE_TITLES[phase_num]} 생성 완료")
+        for phase_num in range(2, 8):
+            logger.info(f"Phase {phase_num}: {PHASE_TITLES[phase_num]} 생성 완료")
 
         # 핵심 메시지 추출 (Executive Summary/Teaser에서)
         one_sentence_pitch, key_differentiators, slogan = self._extract_key_messages(
@@ -203,7 +197,7 @@ class ContentGenerator(BaseAgent):
             rfp_summary=rfp_analysis.model_dump(),
             teaser=teaser,
             phases=phases,
-            design_style="modern",
+            design_style="guide_template",
         )
 
     async def _generate_teaser(
@@ -308,7 +302,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 
         phase_content = PhaseContent(
             phase_number=phase_num,
-            phase_title=self.PHASE_TITLES[phase_num],
+            phase_title=PHASE_TITLES[phase_num],
             phase_subtitle=self.PHASE_SUBTITLES[phase_num],
             win_theme=slides_data.get("win_theme_key"),
             slides=slides,
@@ -411,7 +405,7 @@ Phase 비중: {weight * 100:.0f}%
 {json.dumps(company_data, ensure_ascii=False, indent=2)[:4000]}
 {pain_point_section}{eval_strategy_section}{win_theme_section}
 ## 요청사항
-Phase {phase_num}: {self.PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성해주세요.
+Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성해주세요.
 - 슬라이드 수: {min_slides}~{max_slides}장
 - 목적: {self.PHASE_SUBTITLES[phase_num]}
 {f'- 특별 강조 요소: {", ".join(special_focus)}' if special_focus else ''}

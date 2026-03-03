@@ -12,6 +12,11 @@ from config.settings import get_settings
 
 logger = get_logger("agent")
 
+# JSON 추출 실패 시 사용자 메시지 (2-4)
+JSON_PARSE_FAILED_MESSAGE = (
+    "RFP 분석 결과를 JSON으로 파싱하지 못했습니다. LLM 응답 형식을 확인해 주세요."
+)
+
 
 class BaseAgent(ABC):
     """LLM 기반 에이전트 (Claude / Gemini / Groq 중 .env 설정에 따라 선택)"""
@@ -24,6 +29,7 @@ class BaseAgent(ABC):
         settings = get_settings()
         self._provider = settings.llm_provider
         self.prompts_dir = settings.prompts_dir
+        self._prompt_cache: Dict[str, str] = {}
 
         if self._provider == "claude":
             if not settings.anthropic_api_key:
@@ -100,27 +106,63 @@ class BaseAgent(ABC):
         user_message: str,
         max_tokens: int = 4096,
     ) -> str:
-        """Claude (Anthropic) API 호출"""
-        logger.debug("Claude API 호출 (model: %s)", self._anthropic_model)
-        try:
-            message = self._anthropic_client.messages.create(
-                model=self._anthropic_model,
-                max_tokens=max_tokens,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
+        """Claude (Anthropic) API 호출 (재시도·로깅 적용)"""
+        settings = get_settings()
+        max_retries = getattr(settings, "llm_retry_count", 3)
+        base_delay = getattr(settings, "llm_retry_base_delay_seconds", 5.0)
+        delay_sec = settings.gemini_delay_seconds
+        last_error: Optional[Exception] = None
+        for attempt in range(max_retries):
+            t0 = time.perf_counter()
+            logger.debug(
+                "LLM 호출 model=%s input_len=%d",
+                self._anthropic_model,
+                len(user_message),
             )
-            if not message.content or not hasattr(message.content[0], "text"):
-                raise ValueError("Claude 응답이 비어 있습니다.")
-            result = message.content[0].text.strip()
-            if not result:
-                raise ValueError("Claude 응답 텍스트가 비어 있습니다.")
-            delay_sec = get_settings().gemini_delay_seconds
-            if delay_sec > 0:
-                time.sleep(delay_sec)
-            return result
-        except Exception as e:
-            logger.error(f"Claude API 호출 실패: {str(e)[:500]}")
-            raise RuntimeError(f"Claude API 호출 실패: {e}") from e
+            try:
+                message = self._anthropic_client.messages.create(
+                    model=self._anthropic_model,
+                    max_tokens=max_tokens,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": user_message}],
+                )
+                if not message.content or not hasattr(message.content[0], "text"):
+                    raise ValueError("Claude 응답이 비어 있습니다.")
+                result = message.content[0].text.strip()
+                if not result:
+                    raise ValueError("Claude 응답 텍스트가 비어 있습니다.")
+                elapsed = time.perf_counter() - t0
+                logger.debug(
+                    "LLM 응답 len=%d elapsed=%.2fs",
+                    len(result),
+                    elapsed,
+                )
+                if delay_sec > 0:
+                    time.sleep(delay_sec)
+                return result
+            except Exception as e:
+                last_error = e
+                err_str = str(e).upper()
+                is_retryable = (
+                    "429" in err_str
+                    or "RATE_LIMIT" in err_str
+                    or "OVERLOADED" in err_str
+                    or "TIMEOUT" in err_str
+                )
+                if is_retryable and attempt < max_retries - 1:
+                    wait = base_delay * (2**attempt)
+                    logger.warning(
+                        "Claude 일시 오류, %d초 후 재시도 (%d/%d): %s",
+                        int(wait),
+                        attempt + 1,
+                        max_retries,
+                        str(e)[:200],
+                    )
+                    time.sleep(wait)
+                    continue
+                logger.error("Claude API 호출 실패: %s: %s", type(e).__name__, (str(e)[:200] or ""))
+                raise RuntimeError(f"Claude API 호출 실패: {e}") from e
+        raise RuntimeError(f"Claude API 호출 실패: {last_error}") from last_error
 
     def _call_groq(
         self,
@@ -128,36 +170,69 @@ class BaseAgent(ABC):
         user_message: str,
         max_tokens: int = 4096,
     ) -> str:
-        """Groq API 호출 (413/429 대응: 입력 길이 제한·호출 간 대기)"""
+        """Groq API 호출 (413/429 대응: 입력 길이 제한·재시도·로깅)"""
         settings = get_settings()
-        # 413 Request too large 방지: user 메시지 길이 제한 (TPM 한도 내로)
         max_chars = getattr(settings, "groq_max_user_message_chars", 0) or 0
         if max_chars > 0 and len(user_message) > max_chars:
             user_message = user_message[:max_chars] + "\n\n... (길이 제한으로 일부 생략됨)"
             logger.debug("Groq user_message %d자로 제한 적용", max_chars)
-        logger.debug("Groq API 호출 (model: %s)", self._groq_model)
-        try:
-            response = self._groq_client.chat.completions.create(
-                model=self._groq_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ],
-                max_tokens=max_tokens,
+        max_retries = getattr(settings, "llm_retry_count", 3)
+        base_delay = getattr(settings, "llm_retry_base_delay_seconds", 5.0)
+        delay_sec = getattr(settings, "groq_delay_seconds", 0) or 0
+        if delay_sec <= 0:
+            delay_sec = settings.gemini_delay_seconds
+        last_error: Optional[Exception] = None
+        for attempt in range(max_retries):
+            t0 = time.perf_counter()
+            logger.debug(
+                "LLM 호출 model=%s input_len=%d",
+                self._groq_model,
+                len(user_message),
             )
-            result = (response.choices[0].message.content or "").strip()
-            if not result:
-                raise ValueError("Groq 응답이 비어 있습니다.")
-            delay_sec = getattr(settings, "groq_delay_seconds", 0) or 0
-            if delay_sec <= 0:
-                delay_sec = settings.gemini_delay_seconds
-            if delay_sec > 0:
-                time.sleep(delay_sec)
-            return result
-        except Exception as e:
-            err_msg = str(e)[:500]
-            logger.error(f"Groq API 호출 실패: {err_msg}")
-            raise RuntimeError(f"Groq API 호출 실패: {e}") from e
+            try:
+                response = self._groq_client.chat.completions.create(
+                    model=self._groq_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    max_tokens=max_tokens,
+                )
+                result = (response.choices[0].message.content or "").strip()
+                if not result:
+                    raise ValueError("Groq 응답이 비어 있습니다.")
+                elapsed = time.perf_counter() - t0
+                logger.debug(
+                    "LLM 응답 len=%d elapsed=%.2fs",
+                    len(result),
+                    elapsed,
+                )
+                if delay_sec > 0:
+                    time.sleep(delay_sec)
+                return result
+            except Exception as e:
+                last_error = e
+                err_str = str(e).upper()
+                is_retryable = (
+                    "429" in err_str
+                    or "RATE_LIMIT" in err_str
+                    or "413" in err_str
+                    or "OVERLOADED" in err_str
+                )
+                if is_retryable and attempt < max_retries - 1:
+                    wait = base_delay * (2**attempt)
+                    logger.warning(
+                        "Groq 일시 오류, %d초 후 재시도 (%d/%d): %s",
+                        int(wait),
+                        attempt + 1,
+                        max_retries,
+                        str(e)[:200],
+                    )
+                    time.sleep(wait)
+                    continue
+                logger.error("Groq API 호출 실패: %s: %s", type(e).__name__, (str(e)[:200] or ""))
+                raise RuntimeError(f"Groq API 호출 실패: {e}") from e
+        raise RuntimeError(f"Groq API 호출 실패: {last_error}") from last_error
 
     def _call_gemini(
         self,
@@ -165,13 +240,18 @@ class BaseAgent(ABC):
         user_message: str,
         max_tokens: int = 4096,
     ) -> str:
-        """Gemini API 호출"""
-        logger.debug("Gemini API 호출 (model: %s)", self.model)
+        """Gemini API 호출 (설정 기반 재시도·로깅)"""
+        settings = get_settings()
+        max_retries = getattr(settings, "llm_retry_count", 3)
+        base_delay = getattr(settings, "llm_retry_base_delay_seconds", 5.0)
         types = self._genai_types
-        max_retries = 3
-        base_delay = 5
-
         for attempt in range(max_retries):
+            t0 = time.perf_counter()
+            logger.debug(
+                "LLM 호출 model=%s input_len=%d",
+                self.model,
+                len(user_message),
+            )
             try:
                 response = self.client.models.generate_content(
                     model=self.model,
@@ -184,9 +264,14 @@ class BaseAgent(ABC):
                 if response.text is None:
                     raise ValueError("Gemini 응답 텍스트가 비어 있습니다.")
                 result = response.text
-                delay_sec = get_settings().gemini_delay_seconds
+                elapsed = time.perf_counter() - t0
+                logger.debug(
+                    "LLM 응답 len=%d elapsed=%.2fs",
+                    len(result),
+                    elapsed,
+                )
+                delay_sec = settings.gemini_delay_seconds
                 if delay_sec > 0:
-                    logger.debug("API 호출 간 대기 %.1f초", delay_sec)
                     time.sleep(delay_sec)
                 return result
             except Exception as e:
@@ -201,13 +286,13 @@ class BaseAgent(ABC):
                     delay = base_delay * (2**attempt)
                     logger.warning(
                         "Gemini 할당량/속도 제한. %d초 후 재시도 (%d/%d)",
-                        delay,
+                        int(delay),
                         attempt + 1,
                         max_retries,
                     )
                     time.sleep(delay)
                     continue
-                logger.error(f"Gemini API 호출 실패: {str(e)[:500]}")
+                logger.error("Gemini API 호출 실패: %s: %s", type(e).__name__, (str(e)[:200] or ""))
                 if is_quota_error:
                     raise RuntimeError(
                         "Gemini API 할당량 초과(429). .env에서 LLM_PROVIDER=groq 또는 LLM_PROVIDER=claude 로 바꾸고 해당 API 키를 설정하면 다른 모델로 전환할 수 있습니다."
@@ -218,7 +303,7 @@ class BaseAgent(ABC):
 
     def _load_prompt(self, prompt_name: str) -> str:
         """
-        프롬프트 템플릿 로드
+        프롬프트 템플릿 로드 (캐시 사용으로 디스크 I/O 감소)
 
         Args:
             prompt_name: 프롬프트 파일명 (확장자 제외)
@@ -226,13 +311,15 @@ class BaseAgent(ABC):
         Returns:
             프롬프트 텍스트
         """
+        if prompt_name in self._prompt_cache:
+            return self._prompt_cache[prompt_name]
         prompt_path = self.prompts_dir / f"{prompt_name}.txt"
-
         if not prompt_path.exists():
             logger.warning(f"프롬프트 파일 없음: {prompt_path}")
             return ""
-
-        return prompt_path.read_text(encoding="utf-8")
+        text = prompt_path.read_text(encoding="utf-8")
+        self._prompt_cache[prompt_name] = text
+        return text
 
     def _extract_json(self, text: str) -> Dict[str, Any]:
         """
@@ -292,7 +379,11 @@ class BaseAgent(ABC):
                 return result
 
         snippet = (text[:300] + "..." if len(text) > 300 else text).replace("\n", " ")
-        logger.warning("JSON 추출 실패 (응답 일부: {})", snippet)
+        logger.warning(
+            "JSON 추출 실패 (응답 일부: %s). %s",
+            snippet,
+            JSON_PARSE_FAILED_MESSAGE,
+        )
         return {}
 
     def _truncate_text(self, text: str, max_chars: int = 30000) -> str:

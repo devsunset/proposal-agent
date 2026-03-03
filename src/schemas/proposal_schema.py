@@ -558,7 +558,7 @@ class ProposalContent(BaseModel):
     )
 
     # 디자인 설정
-    design_style: Optional[str] = "modern"  # 디자인 스타일 프리셋
+    design_style: Optional[str] = "guide_template"  # 디자인 스타일 프리셋
     design_preferences: Optional[Dict[str, Any]] = None
 
     class Config:
@@ -578,6 +578,18 @@ class ProposalContent(BaseModel):
             }
         }
 
+
+# Impact-8 Phase 제목 (단일 소스 — main, content_generator, pptx_orchestrator에서 import)
+PHASE_TITLES = {
+    0: "HOOK",
+    1: "SUMMARY",
+    2: "INSIGHT",
+    3: "CONCEPT & STRATEGY",
+    4: "ACTION PLAN",
+    5: "MANAGEMENT",
+    6: "WHY US",
+    7: "INVESTMENT & ROI",
+}
 
 # Impact-8 Phase 정의 상수
 PHASE_DEFINITIONS = {
@@ -698,7 +710,7 @@ PHASE_DEFINITIONS = {
 
 # Modern 스타일 디자인 설정
 DESIGN_STYLE = {
-    "name": "modern",
+    "name": "guide_template",
     "description": "Modern 제안서 스타일 - 모던하고 임팩트 있는 디자인",
 
     # 컬러 팔레트

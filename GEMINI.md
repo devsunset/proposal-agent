@@ -1,9 +1,9 @@
-# 입찰 제안서 자동 생성 에이전트 (v3.6 - Impact-8 + slide_kit v3.6 + Layout System + Design Quality)
+# 입찰 제안서 자동 생성 에이전트 (Impact-8 + pptx_generator + TemplateManager)
 
 ## 프로젝트 개요
-RFP(제안요청서) 문서를 입력받아 PPTX 형식의 입찰 제안서를 자동 생성하는 Python 에이전트 시스템
+RFP(제안요청서) 문서를 입력받아 PPTX 형식의 입찰 제안서를 자동 생성하는 Python 에이전트 시스템.
 
-**v3.6 업데이트**: v3.5 + 컬러 유틸(darken/lighten) + 21색 확장 팔레트 + 그라디언트 커버/섹션/클로징 + 그림자 프리셋(subtle/normal/elevated/card) + SemiBold/Medium 타이포 계층 + KPIS/GRID/COLS/TABLE/STAT_ROW/METRIC_CARD 시각 폴리시 + LINE_CHART smooth 버그 수정
+**현재 구현**: 문서 파싱(`get_parser_for_path` → PDF/DOCX/TXT/PPTX), RFP 분석·콘텐츠 생성(LLM: Claude/Gemini/Groq), PPTX 렌더링(`TemplateManager` + `pptx_generator` + `chart_generator` + `diagram_generator`).
 
 ## ★★★ 제안서 생성 워크플로우 (최우선 규칙)
 
@@ -30,8 +30,7 @@ output/테스트 XX/        ← PPTX 출력 (생성 스크립트 + 결과물)
 
 **STEP 3: 생성 스크립트 작성**
 - `output/테스트 XX/generate_제안서.py` 스크립트 생성
-- **반드시 slide_kit.py import** (아래 규칙 참조)
-- **LAYOUTS 프리셋 활용** — `get_zones()` 으로 안전 영역 사용
+- **PPTX 생성**: `src/generators/pptx_generator.py` + `TemplateManager` + `chart_generator` / `diagram_generator` 사용 (CLI `main.py generate`가 내부에서 사용)
 - 목표 분량: 40~80장 (프로젝트 규모에 따라 조정)
 
 **STEP 4: 실행 및 검증**
@@ -39,77 +38,12 @@ output/테스트 XX/        ← PPTX 출력 (생성 스크립트 + 결과물)
 - 오류 발생 시 즉시 수정 후 재실행
 - 최종 파일 경로 안내
 
-### 레이아웃 선택 가이드 (내용에 맞게 적용)
+### 레이아웃·슬라이드 (현재 구현)
 
-| 콘텐츠 유형 | 권장 레이아웃 | slide_kit 함수 |
-|------------|-------------|---------------|
-| 시장 환경/배경 분석 | `THREE_COL` or `TWO_COL` | `COLS()` or Zone 직접 |
-| 핵심 인사이트/메시지 | `HIGHLIGHT_BODY` | `HIGHLIGHT()` |
-| 전략 프레임워크 | `PYRAMID_DESC` | `PYRAMID()` |
-| 채널/항목 비교 | `COMPARE_LR` | `COMPARE()` |
-| 실행 프로세스 | `PROCESS_DESC` | `FLOW()` |
-| KPI/성과 목표 | `KPI_GRID` | `KPIS()` |
-| 월별 일정 | `GANTT` | `GANTT_CHART()` |
-| 조직도 | `ORG_CHART` | `ORG()` |
-| 수행 실적 | `GALLERY_3x2` or `GRID` | `GRID()` |
-| 리스크 관리 | `RISK_CARD` | Zone 직접 |
-| 데이터 비교 | `TABLE_INSIGHT` | `TABLE()` |
-| 통계/수치 강조 | `FULL_BODY` | `STAT_ROW()` |
-| 타임라인 | `TIMELINE_DESC` | `TIMELINE()` |
-| 차별화 포인트 | `FOUR_COL` | `ICON_CARDS()` |
-| 우선순위 매트릭스 | `MATRIX_DESC` | `MATRIX()` |
-| 프로그램 소개 | `PROGRAM_CARD_3` | Zone 직접 |
-| 키비주얼/대표이미지 | `KEY_VISUAL` | `IMG()` + Zone |
-| 인용문/핵심 메시지 | `HIGHLIGHT_BODY` | `QUOTE()` |
-| 예산/비율 시각화 | `FULL_BODY` | `PIE_CHART()` or `BAR_CHART()` |
-| 추세/성장 데이터 | `FULL_BODY` | `LINE_CHART()` |
-| 구조화된 항목 | `FULL_BODY` | `NUMBERED_LIST()` |
-| 고급 카드 (그림자) | `THREE_COL` or `FOUR_COL` | `CARD()` |
+PPTX 생성은 `src/generators/pptx_generator.py`(제목/본문/테이블/2·3단), `chart_generator.py`(차트·타임라인·조직도), `diagram_generator.py`(프로세스 플로우)와 `TemplateManager`(템플릿·디자인 시스템)로 수행됩니다.  
+`main.py generate` 명령이 RFP 파싱 → 콘텐츠 생성 → PPTX 렌더링을 한 번에 실행합니다.
 
-## ★ 필수 규칙: PPTX 생성 스크립트 작성 시
-
-**모든 제안서 생성 스크립트는 반드시 `src/generators/slide_kit.py`를 import하여 사용해야 합니다.**
-
-```python
-# 스크립트 상단에 반드시 추가
-import sys; sys.path.insert(0, "/path/to/proposal-agent")
-from src.generators.slide_kit import *
-
-# 또는 importlib 사용
-import importlib.util
-spec = importlib.util.spec_from_file_location('slide_kit', '프로젝트경로/src/generators/slide_kit.py')
-sk = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(sk)
-```
-
-### slide_kit이 제공하는 것 (v3.6)
-
-| 카테고리 | 함수 | 설명 |
-|---------|------|------|
-| **상수** | `C`, `SW`, `SH`, `ML`, `CW`, `SZ`, `FONT` | 컬러(21색), 크기, 폰트 |
-| **상수 (v3.6)** | `FONT_W`, `SHADOW`, `GRAD` | 폰트 웨이트, 그림자 프리셋, 그라디언트 프리셋 |
-| **컬러 유틸 (v3.6)** | `darken()`, `lighten()` | RGBColor 밝기 조절 유틸 |
-| **Zone** | `Z`, `GAP`, `CGAP`, `CW_IN`, `ML_IN` | 표준 영역, 간격 |
-| **레이아웃** | `LAYOUTS`, `get_zones()`, `zone_to_inches()`, `list_layouts()` | 20가지 프리셋 |
-| **도형 (기본)** | `R()`, `BOX()`, `OBOX()` | 직각 사각형, 텍스트 박스, 아웃라인 |
-| **도형 (v3.5)** | `RBOX()`, `ORBOX()`, `CARD()` | 라운드 박스, 라운드 아웃라인, 통합 카드 |
-| **텍스트** | `T(fn=)`, `RT()`, `MT()` | 단일(fn=FONT_W 지원)/리치/멀티라인 |
-| **이펙트** | `gradient_bg()`, `bg()`, `set_char_spacing()` | 그래디언트, 자간 |
-| **이펙트 (v3.6)** | `gradient_shape()`, `add_shadow(preset=)`, `OVERLAY()` | 도형 그라디언트, 프리셋 그림자, 오버레이 |
-| **구분/악센트** | `DIVIDER()`, `ACCENT_LINE()` | 구분선 3종, 좌측 악센트 |
-| **컴포넌트** | `IMG()`, `PN()`, `TB()`, `SRC()`, `WB()` | 이미지홀더, 페이지번호, 타이틀바, 출처, Win Theme |
-| **텍스트 블록** | `QUOTE()`, `NUMBERED_LIST()` | 인용문(modern/box), 번호 리스트 |
-| **도식화 (기본)** | `FLOW()`, `COLS(shadow=)`, `PYRAMID()`, `MATRIX()`, `TABLE()`, `HIGHLIGHT(grad=)`, `KPIS(shadow=)`, `COMPARE()`, `TIMELINE()` | 플로우, 컬럼(그림자), 피라미드 등 |
-| **도식화 (확장)** | `GRID(shadow=)`, `STAT_ROW(shadow=)`, `GANTT_CHART()`, `ORG()`, `ICON_CARDS()` | 그리드(그림자), 통계, 간트, 조직도, 아이콘카드 |
-| **차트** | `BAR_CHART()`, `PIE_CHART()`, `LINE_CHART(smooth=)` | 바(세로/가로), 파이/도넛, 라인(곡선 수정) |
-| **시각화 헬퍼** | `IMG_PH()`, `PROGRESS_BAR()`, `METRIC_CARD(shadow=)`, `STEP_ARROW()`, `DONUT_LABEL()` | 이미지홀더, 프로그레스, 메트릭카드(그림자), 스텝화살표, 도넛 |
-| **슬라이드** | `slide_cover()`, `slide_section_divider()`, `slide_toc()`, `slide_exec_summary()`, `slide_next_step()`, `slide_closing()` | 표지(그라디언트), 구분자(그라디언트), 목차, 요약, CTA(그라디언트), 마지막(그라디언트) |
-| **자동 배치** | `VStack` 클래스 | 자동 Y좌표 계산, 겹침 방지 |
-| **테마** | `THEMES`, `apply_theme()`, `reset_theme()`, `list_themes()` | 5가지 테마, 동적 색상 변경 |
-| **검증** | `validate_sequence()` | 레이아웃 시퀀스 단조로움 검증 |
-| **유틸** | `new_presentation()`, `new_presentation_from_template()`, `new_slide()`, `save_pptx()`, `_cols()` | 생성, 템플릿, 저장, 컬럼너비 |
-
-### ★★★ 겹침·공백 방지 규칙 (v3.4 — 테스트 06 검증 결과)
+### ★★★ 겹침·공백 방지 규칙 (참고)
 
 **1. 요소 간 최소 간격 (인치)**
 ```
@@ -158,38 +92,17 @@ MT(불릿)   → 다음 요소:  0.20"
 | 커뮤니케이션  | COLS + HIGHLIGHT + IMG_PH (흐름도) |
 ```
 
-### 절대 하지 말 것
-- ❌ 헬퍼 함수를 스크립트 내에 다시 정의하지 말 것
-- ❌ RGBColor를 직접 하드코딩하지 말 것 → `C["primary"]` 사용
-- ❌ 폰트명을 직접 쓰지 말 것 → `FONT` 상수 사용
-- ❌ "맑은 고딕" 등 다른 폰트 사용 금지 → Pretendard만 사용
+### 기본 사용 패턴 (CLI)
 
-### 기본 사용 패턴
+```bash
+# 제안서 생성 (RFP → 파싱 → 분석 → 콘텐츠 → PPTX)
+python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처"
 
-```python
-prs = new_presentation()
-WIN = {"data": "...", "story": "...", "ugc": "..."}
-
-# 표지
-slide_cover(prs, "프로젝트명", "발주처명")
-
-# 목차
-slide_toc(prs, "목차", [("01", "HOOK", "설명"), ...], pg=2)
-
-# 섹션 구분자
-slide_section_divider(prs, "01", "사업이해", "부제", "스토리", "data", WIN)
-
-# 일반 콘텐츠
-s = new_slide(prs)
-bg(s, C["white"])
-TB(s, "Action Title — 인사이트 기반 제목", pg=3)
-MT(s, ML, Inches(1.3), CW, Inches(3), ["항목1", "항목2"], bul=True)
-
-# 저장
-save_pptx(prs, "output/파일명.pptx")
+# RFP 분석만
+python main.py analyze input/rfp.pdf
 ```
 
-**v3.1 업데이트**: Win Theme, Executive Summary, Next Step, Action Title 시스템 도입
+Win Theme, Executive Summary, Action Title 등은 콘텐츠 생성(Impact-8) 단계에서 자동 반영됩니다.
 - Win Theme: 제안서 전체에 반복되는 핵심 수주 전략 메시지
 - Executive Summary: 의사결정권자용 1페이지 핵심 요약
 - Next Step: 다음 단계 안내 / Call to Action
@@ -214,24 +127,15 @@ save_pptx(prs, "output/파일명.pptx")
 ├── main.py                 # CLI 엔트리포인트
 ├── config/
 │   ├── prompts/            # Phase별 프롬프트 템플릿
-│   │   ├── content_guidelines.txt  # v3.1 콘텐츠 작성 가이드라인
-│   │   ├── phase0_hook.txt
-│   │   ├── phase1_summary.txt
-│   │   ├── phase2_insight.txt
-│   │   ├── phase3_concept.txt
-│   │   ├── phase4_action.txt
-│   │   ├── phase5_management.txt
-│   │   ├── phase6_whyus.txt
-│   │   └── phase7_investment.txt
-│   └── design/             # 디자인 설정
-│       └── design_style.py    # Modern 스타일 정의 (v3.1)
+│   │   ├── content_guidelines.txt
+│   │   ├── phase0_hook.txt … phase7_investment.txt
+│   └── proposal_types.py   # 제안서 유형·가중치
 ├── src/
-│   ├── parsers/            # 문서 파싱 (PDF, DOCX)
-│   ├── agents/             # Gemini 에이전트
-│   ├── generators/         # PPTX 생성 ([회사명])
-│   ├── orchestrators/      # 워크플로우 조율
-│   └── schemas/            # Pydantic 스키마
-│       └── proposal_schema.py  # Impact-8 스키마 (v3.0)
+│   ├── parsers/            # 문서 파싱 (PDF, DOCX, TXT, PPTX) — get_parser_for_path
+│   ├── agents/             # RFP 분석·콘텐츠 생성 (LLM)
+│   ├── generators/         # PPTX: template_manager, pptx_generator, chart_generator, diagram_generator
+│   ├── orchestrators/      # proposal_orchestrator, pptx_orchestrator
+│   └── schemas/            # Pydantic 스키마 (proposal_schema, rfp_schema)
 ├── templates/              # PPTX 템플릿
 ├── company_data/           # 회사 정보
 ├── input/                  # RFP 입력

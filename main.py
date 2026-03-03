@@ -24,23 +24,15 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from config.settings import get_settings
+from config.proposal_types import ProposalType as ConfigProposalType, get_type_display_name
 from src.orchestrators.proposal_orchestrator import ProposalOrchestrator
 from src.orchestrators.pptx_orchestrator import PPTXOrchestrator
-from src.utils.logger import LOG_SEPARATOR
-
-# Impact-8 Phase 0~7 라벨 (구분선 출력 시 함께 표시)
-PHASE_LABELS = {
-    0: "HOOK",
-    1: "SUMMARY",
-    2: "INSIGHT",
-    3: "CONCEPT & STRATEGY",
-    4: "ACTION PLAN",
-    5: "MANAGEMENT",
-    6: "WHY US",
-    7: "INVESTMENT & ROI",
-}
+from src.utils.logger import LOG_SEPARATOR, setup_logger
+from src.utils.path_utils import safe_filename, safe_output_path
+from src.schemas.proposal_schema import PHASE_TITLES
 
 load_dotenv()
+setup_logger()  # LOG_LEVEL 환경 변수 사용 (기본 INFO)
 
 app = typer.Typer(
     name="proposal-agent",
@@ -50,14 +42,7 @@ app = typer.Typer(
 console = Console()
 
 # 제안서 유형 상수
-PROPOSAL_TYPES = {
-    "marketing_pr": "마케팅/PR/소셜미디어",
-    "event": "이벤트/행사",
-    "it_system": "IT/시스템",
-    "public": "공공/입찰",
-    "consulting": "컨설팅",
-    "general": "일반",
-}
+# 제안서 유형 표시명은 config.proposal_types.get_type_display_name() 사용 (단일 소스)
 
 
 @app.command()
@@ -100,7 +85,7 @@ def generate(
         help="출력 디렉토리",
     ),
     template: str = typer.Option(
-        "modern",
+        "guide_template",
         "--template",
         help="PPTX 템플릿/스타일명",
     ),
@@ -143,9 +128,10 @@ def generate(
         raise typer.Exit(1)
 
     # 유형 검증
-    if proposal_type and proposal_type not in PROPOSAL_TYPES:
+    _valid_types = {p.value for p in ConfigProposalType}
+    if proposal_type and proposal_type not in _valid_types:
         console.print(f"[red]지원하지 않는 제안서 유형: {proposal_type}[/red]")
-        console.print(f"사용 가능한 유형: {', '.join(PROPOSAL_TYPES.keys())}")
+        console.print(f"사용 가능한 유형: {', '.join(_valid_types)}")
         raise typer.Exit(1)
 
     # 헤더 출력 (사용 중인 LLM 표시)
@@ -166,7 +152,7 @@ def generate(
     if client_name:
         console.print(f"[bold]발주처:[/bold] {client_name}")
     if proposal_type:
-        console.print(f"[bold]제안서 유형:[/bold] {PROPOSAL_TYPES.get(proposal_type, proposal_type)}")
+        console.print(f"[bold]제안서 유형:[/bold] {get_type_display_name(proposal_type)}")
     console.print()
 
     # 출력 디렉토리 생성
@@ -258,22 +244,8 @@ async def _generate_async_impl(
         console=console,
     ) as progress:
         task = progress.add_task("분석 및 콘텐츠 생성 중...", total=None)
-        _last_phase = [-1]  # Phase 0~7 구분선 출력용
-
-        def update_progress(p):
-            msg = p.get("message", "처리 중...")
-            # "Phase N:" (N=0~7) 시작 시에만 구분선 출력
-            parts = msg.split(":", 1)
-            if len(parts) >= 2 and parts[0].strip().startswith("Phase "):
-                tok = parts[0].strip().split()
-                if len(tok) == 2 and tok[1].isdigit():
-                    n = int(tok[1])
-                    if 0 <= n <= 7 and n != _last_phase[0]:
-                        console.print(LOG_SEPARATOR)
-                        console.print(f"[bold cyan]Phase {n}: {PHASE_LABELS.get(n, '')}[/bold cyan]")
-                        console.print(LOG_SEPARATOR)
-                        _last_phase[0] = n
-            progress.update(task, description=msg)
+        _last_phase = [-1]
+        update_progress = _make_progress_callback(console, progress, task, _last_phase)
 
         submission_date = datetime.now().strftime("%Y-%m-%d")
 
@@ -293,13 +265,13 @@ async def _generate_async_impl(
     summary = proposal_orchestrator.get_proposal_summary(content)
     _print_content_summary(summary)
 
-    # 최종 프로젝트명 확정
-    final_project_name = content.project_name
-    safe_filename = final_project_name.replace(" ", "_").replace("/", "-")
+    # 최종 프로젝트명 확정 (보안: 허용 문자·길이 제한)
+    final_project_name = content.project_name or "제안서"
+    safe_base = safe_filename(final_project_name)
 
     # 중간 JSON 저장 (옵션)
     if save_json:
-        json_path = output_dir / f"{safe_filename}_content.json"
+        json_path = safe_output_path(output_dir, final_project_name, suffix="_content", extension=".json")
         proposal_orchestrator.save_content_json(content, json_path)
         console.print(f"[dim]JSON 저장: {json_path}[/dim]")
 
@@ -314,24 +286,10 @@ async def _generate_async_impl(
         console=console,
     ) as progress:
         task = progress.add_task("PPTX 생성 중...", total=None)
-        _last_phase_pptx = [-1]  # Phase 0~7 구분선 출력용
+        _last_phase_pptx = [-1]
+        update_progress = _make_progress_callback(console, progress, task, _last_phase_pptx)
 
-        def update_progress(p):
-            msg = p.get("message", "처리 중...")
-            # "Phase N:" (N=0~7) 시작 시에만 구분선 출력
-            parts = msg.split(":", 1)
-            if len(parts) >= 2 and parts[0].strip().startswith("Phase "):
-                tok = parts[0].strip().split()
-                if len(tok) == 2 and tok[1].isdigit():
-                    n = int(tok[1])
-                    if 0 <= n <= 7 and n != _last_phase_pptx[0]:
-                        console.print(LOG_SEPARATOR)
-                        console.print(f"[bold cyan]Phase {n}: {PHASE_LABELS.get(n, '')}[/bold cyan]")
-                        console.print(LOG_SEPARATOR)
-                        _last_phase_pptx[0] = n
-            progress.update(task, description=msg)
-
-        output_path = output_dir / f"{safe_filename}_제안서.pptx"
+        output_path = safe_output_path(output_dir, final_project_name, suffix="_제안서", extension=".pptx")
 
         pptx_orchestrator.execute(
             content=content,
@@ -350,7 +308,7 @@ async def _generate_async_impl(
             f"[bold]파일:[/bold] {output_path}\n"
             f"[bold]프로젝트:[/bold] {content.project_name}\n"
             f"[bold]발주처:[/bold] {content.client_name}\n"
-            f"[bold]유형:[/bold] {PROPOSAL_TYPES.get(content.proposal_type.value, content.proposal_type.value)}\n"
+            f"[bold]유형:[/bold] {get_type_display_name(content.proposal_type.value)}\n"
             f"[bold]슬라이드 수:[/bold] {total_slides}장\n"
             f"[bold]디자인 스타일:[/bold] {content.design_style or 'modern'}",
             title="Complete",
@@ -358,6 +316,24 @@ async def _generate_async_impl(
         )
     )
     return ("ok", None)
+
+
+def _make_progress_callback(console, progress, task, last_phase_ref):
+    """Phase 구분선 출력 + progress.update를 묶은 공통 콜백. 콘텐츠/PPTX 단계에서 재사용."""
+    def update_progress(p):
+        msg = p.get("message", "처리 중...")
+        parts = msg.split(":", 1)
+        if len(parts) >= 2 and parts[0].strip().startswith("Phase "):
+            tok = parts[0].strip().split()
+            if len(tok) == 2 and tok[1].isdigit():
+                n = int(tok[1])
+                if 0 <= n <= 7 and n != last_phase_ref[0]:
+                    console.print(LOG_SEPARATOR)
+                    console.print(f"[bold cyan]Phase {n}: {PHASE_TITLES.get(n, '')}[/bold cyan]")
+                    console.print(LOG_SEPARATOR)
+                    last_phase_ref[0] = n
+        progress.update(task, description=msg)
+    return update_progress
 
 
 def _print_content_summary(summary: dict):
@@ -413,29 +389,15 @@ def analyze(
     console.print(LOG_SEPARATOR)
     console.print(f"[bold]RFP 분석:[/bold] {rfp_path}\n")
 
-    from src.parsers.pdf_parser import PDFParser
-    from src.parsers.docx_parser import DOCXParser
-    from src.parsers.txt_parser import TXTParser
-    from src.parsers.pptx_parser import PPTXParser
+    from src.parsers import get_parser_for_path
     from src.agents.rfp_analyzer import RFPAnalyzer
 
-    # 파싱 (확장자에 따라 파서 선택)
-    suffix = rfp_path.suffix.lower()
-    if suffix == ".pdf":
-        parser = PDFParser()
-    elif suffix in [".docx", ".doc"]:
-        parser = DOCXParser()
-    elif suffix == ".txt":
-        parser = TXTParser()
-    elif suffix == ".pptx":
-        parser = PPTXParser()
-    else:
-        console.print(
-            f"[red]지원하지 않는 형식: {suffix}. "
-            "지원: .pdf, .docx, .doc, .txt, .pptx[/red]"
-        )
+    # 파싱 (확장자에 따라 파서 선택 — 통합 함수 사용)
+    try:
+        parser = get_parser_for_path(rfp_path)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
-
     parsed = parser.parse(rfp_path)
     console.print(f"파싱 완료: {len(parsed.get('raw_text', ''))} 문자\n")
 
@@ -514,7 +476,8 @@ def types():
         "general": "35%",
     }
 
-    for code, desc in PROPOSAL_TYPES.items():
+    for p in ConfigProposalType:
+        code, desc = p.value, get_type_display_name(p.value)
         table.add_row(code, desc, weights.get(code, "35%"))
 
     console.print(table)
@@ -527,7 +490,7 @@ def templates():
     templates_dir = Path("templates")
 
     console.print("\n[bold]디자인 스타일:[/bold]")
-    console.print("  - [cyan]modern[/cyan] (기본) - Modern 제안서 스타일")
+    console.print("  - [cyan]guide_template[/cyan] (기본) - 가이드 템플릿 (templates/ 내 guide 포함 .pptx 또는 빈 프레젠테이션)")
 
     if not templates_dir.exists():
         console.print("\n[yellow]templates 디렉토리가 없습니다.[/yellow]")

@@ -552,6 +552,15 @@ def get_config(proposal_type: ProposalType) -> ProposalTypeConfig:
     return PROPOSAL_TYPE_CONFIGS.get(proposal_type, GENERAL_CONFIG)
 
 
+def get_type_display_name(type_value: str) -> str:
+    """유형 코드(예: marketing_pr)에 대한 표시용 한글명 반환. 단일 소스."""
+    try:
+        pt = ProposalType(type_value)
+        return get_config(pt).type_name
+    except (ValueError, KeyError):
+        return type_value
+
+
 def get_phase_config(proposal_type: ProposalType, phase_number: int) -> PhaseConfig:
     """특정 Phase 설정 반환"""
     config = get_config(proposal_type)

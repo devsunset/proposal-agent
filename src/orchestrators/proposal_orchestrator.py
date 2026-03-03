@@ -8,10 +8,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from ..parsers.pdf_parser import PDFParser
-from ..parsers.docx_parser import DOCXParser
-from ..parsers.txt_parser import TXTParser
-from ..parsers.pptx_parser import PPTXParser
+from ..parsers import get_parser_for_path
 from ..agents.rfp_analyzer import RFPAnalyzer
 from ..agents.content_generator import ContentGenerator
 from ..schemas.proposal_schema import ProposalContent, ProposalType
@@ -32,11 +29,6 @@ class ProposalOrchestrator:
     def __init__(self, api_key: Optional[str] = None):
         settings = get_settings()
         self.api_key = api_key or settings.gemini_api_key
-
-        self.pdf_parser = PDFParser()
-        self.docx_parser = DOCXParser()
-        self.txt_parser = TXTParser()
-        self.pptx_parser = PPTXParser()
         self.rfp_analyzer = RFPAnalyzer(api_key=self.api_key)
         self.content_generator = ContentGenerator(api_key=self.api_key)
 
@@ -158,22 +150,9 @@ class ProposalOrchestrator:
             raise
 
     def _parse_document(self, file_path: Path) -> Dict[str, Any]:
-        """파일 확장자에 따라 적절한 파서 선택 (PDF/DOCX/TXT/PPTX)"""
-        suffix = file_path.suffix.lower()
-
-        if suffix == ".pdf":
-            return self.pdf_parser.parse(file_path)
-        elif suffix in [".docx", ".doc"]:
-            return self.docx_parser.parse(file_path)
-        elif suffix == ".txt":
-            return self.txt_parser.parse(file_path)
-        elif suffix == ".pptx":
-            return self.pptx_parser.parse(file_path)
-        else:
-            raise ValueError(
-                f"지원하지 않는 파일 형식: {suffix}. "
-                "지원 형식: .pdf, .docx, .doc, .txt, .pptx"
-            )
+        """파일 확장자에 따라 적절한 파서 선택 (get_parser_for_path 통합)"""
+        parser = get_parser_for_path(file_path)
+        return parser.parse(file_path)
 
     def _load_company_data(self, data_path: Path) -> Dict[str, Any]:
         """회사 데이터 로드"""
@@ -184,8 +163,8 @@ class ProposalOrchestrator:
         try:
             return json.loads(data_path.read_text(encoding="utf-8"))
         except Exception as e:
-            logger.error(f"회사 데이터 로드 실패: {e}")
-            return {}
+            logger.error("회사 데이터 로드 실패: %s: %s", type(e).__name__, str(e)[:200])
+            raise
 
     def save_content_json(
         self, content: ProposalContent, output_path: Path

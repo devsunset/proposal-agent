@@ -27,8 +27,8 @@ input/*
 output/*
 !output/.gitkeep
 
-# Guide (로컬용, 커밋 제외)
-guide/
+# Templates (로컬용, 커밋 제외)
+templates/
 
 # Logs
 *.log

@@ -3,10 +3,7 @@
 import os
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel
-from dotenv import load_dotenv
-
-load_dotenv()
+from pydantic import BaseModel, field_validator
 
 
 class Settings(BaseModel):
@@ -14,6 +11,16 @@ class Settings(BaseModel):
 
     # LLM: claude | gemini | groq (.env의 LLM_PROVIDER로 선택)
     llm_provider: str = os.getenv("LLM_PROVIDER", "gemini").lower().strip()
+
+    @field_validator("llm_provider")
+    @classmethod
+    def validate_llm_provider(cls, v: str) -> str:
+        if v not in ("claude", "gemini", "groq"):
+            raise ValueError(
+                "LLM_PROVIDER must be one of: claude, gemini, groq. "
+                "Check your .env or environment."
+            )
+        return v
 
     # API (Claude / Anthropic)
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
@@ -32,6 +39,35 @@ class Settings(BaseModel):
     groq_max_user_message_chars: int = int(os.getenv("GROQ_MAX_USER_MESSAGE_CHARS", "0") or "0")
     # Groq 호출 간 대기(초). 429/한도 완화용 (0이면 GEMINI_DELAY_SECONDS 사용)
     groq_delay_seconds: float = float(os.getenv("GROQ_DELAY_SECONDS", "0") or "0")
+
+    # 로그 레벨 (DEBUG | INFO | WARNING | ERROR)
+    log_level: str = (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
+
+    # LLM 공통: 재시도·토큰 (429/일시 오류 대응)
+    llm_max_tokens_default: int = int(os.getenv("LLM_MAX_TOKENS", "4096") or "4096")
+    llm_retry_count: int = int(os.getenv("LLM_RETRY_COUNT", "3") or "3")
+    llm_retry_base_delay_seconds: float = float(os.getenv("LLM_RETRY_BASE_DELAY", "5") or "5")
+
+    @field_validator("gemini_delay_seconds", "groq_delay_seconds", "llm_retry_base_delay_seconds")
+    @classmethod
+    def validate_delay_non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("Delay/retry base must be >= 0")
+        return v
+
+    @field_validator("llm_max_tokens_default")
+    @classmethod
+    def validate_max_tokens(cls, v: int) -> int:
+        if v < 1 or v > 128000:
+            raise ValueError("LLM_MAX_TOKENS must be between 1 and 128000")
+        return v
+
+    @field_validator("llm_retry_count")
+    @classmethod
+    def validate_retry_count(cls, v: int) -> int:
+        if v < 1 or v > 10:
+            raise ValueError("LLM_RETRY_COUNT must be between 1 and 10")
+        return v
 
     # Paths
     base_dir: Path = Path(__file__).parent.parent

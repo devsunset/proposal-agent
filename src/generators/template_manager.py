@@ -13,6 +13,7 @@ from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 
 from ..utils.logger import get_logger
+from ..utils.path_utils import safe_filename
 from config.settings import get_settings
 
 logger = get_logger("template_manager")
@@ -26,6 +27,7 @@ class TemplateManager:
         self.templates_dir = templates_dir or settings.templates_dir
         self.layouts = self._load_layouts()
         self.design_system = self._get_design_system()
+        self._cached_guide_path: Optional[Path] = None
 
     def _load_layouts(self) -> Dict[str, Any]:
         """레이아웃 정의 로드"""
@@ -91,21 +93,53 @@ class TemplateManager:
             },
         }
 
+    def _find_guide_template(self) -> Optional[Path]:
+        """
+        templates 폴더 하위에서 '가이드' 또는 'guide'가 포함된 .pptx 파일을 찾음.
+        결과를 인스턴스에 캐시하여 반복 glob 방지.
+        """
+        if self._cached_guide_path is not None:
+            return self._cached_guide_path
+        if not self.templates_dir.exists():
+            return None
+        keywords = ("가이드", "guide")
+        for f in sorted(self.templates_dir.glob("*.pptx")):
+            stem_lower = f.stem.lower()
+            if any(kw in stem_lower or kw in f.stem for kw in keywords):
+                self._cached_guide_path = f
+                return f
+        return None
+
     def load_template(self, template_name: str = "base_template") -> Presentation:
         """
-        템플릿 파일 로드
+        템플릿 파일 로드.
+
+        1) templates/{template_name}.pptx 가 있으면 해당 파일 사용
+        2) 없으면 templates/ 하위에서 '가이드' 또는 'guide'가 포함된 .pptx 검색 후 사용
+        3) 둘 다 없으면 빈 프레젠테이션 생성
 
         Args:
-            template_name: 템플릿 파일명 (확장자 제외)
+            template_name: 템플릿 파일명 (확장자 제외). 경로 이탈 방지를 위해 safe_filename으로 정제됨.
 
         Returns:
             Presentation 객체
         """
-        template_path = self.templates_dir / f"{template_name}.pptx"
+        safe_name = safe_filename(template_name, max_len=80)
+        template_path = (self.templates_dir / f"{safe_name}.pptx").resolve()
+        templates_resolved = self.templates_dir.resolve()
+        try:
+            template_path.relative_to(templates_resolved)
+        except ValueError:
+            template_path = templates_resolved / f"{safe_name}.pptx"
 
         if template_path.exists():
             logger.info(f"템플릿 로드: {template_path}")
             return Presentation(template_path)
+
+        guide_path = self._find_guide_template()
+        if guide_path is not None:
+            logger.info(f"가이드 템플릿 로드: {guide_path}")
+            return Presentation(guide_path)
 
         logger.info("기본 빈 프레젠테이션 생성")
         return Presentation()

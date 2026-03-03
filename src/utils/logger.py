@@ -1,5 +1,6 @@
 """로깅 설정"""
 
+import os
 import sys
 from typing import Optional
 
@@ -18,8 +19,10 @@ def log_stage(stage_name: Optional[str] = None) -> None:
         _log.info(LOG_SEPARATOR)
 
 
-def setup_logger(level: str = "INFO") -> None:
-    """로거 설정"""
+def setup_logger(level: Optional[str] = None) -> None:
+    """로거 설정. level이 없으면 환경 변수 LOG_LEVEL 사용 (기본 INFO)."""
+    if level is None:
+        level = (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
     logger.remove()
     logger.add(
         sys.stderr,
@@ -34,5 +37,4 @@ def get_logger(name: str = "proposal"):
     return logger.bind(name=name)
 
 
-# 기본 설정 적용
-setup_logger()
+# main.py 진입점에서만 setup_logger() 호출 (load_dotenv 이후 LOG_LEVEL 적용). 여기서는 호출하지 않음.

@@ -148,6 +148,9 @@ class RFPAnalyzer(BaseAgent):
 
         # JSON 파싱
         analysis_data = self._extract_json(response)
+        if not analysis_data:
+            from .base_agent import JSON_PARSE_FAILED_MESSAGE
+            raise ValueError(JSON_PARSE_FAILED_MESSAGE)
 
         # 기본값 설정
         analysis_data.setdefault("project_name", "프로젝트명 미확인")
