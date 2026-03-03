@@ -347,7 +347,10 @@ async def _generate_async_impl(
 
 
 def _make_progress_callback(console, progress, task, last_phase_ref):
-    """Phase 구분선 출력 + progress.update를 묶은 공통 콜백. 콘텐츠/PPTX 단계에서 재사용."""
+    """
+    Phase 패널 출력 + progress.update. 패널 아래에는 해당 Phase 로그만 나오도록
+    스피너를 먼저 현재 Phase 메시지로 갱신한 뒤 줄바꿈하고 패널을 찍음.
+    """
     def update_progress(p):
         msg = p.get("message", "처리 중...")
         parts = msg.split(":", 1)
@@ -356,8 +359,11 @@ def _make_progress_callback(console, progress, task, last_phase_ref):
             if len(tok) == 2 and tok[1].isdigit():
                 n = int(tok[1])
                 if 0 <= n <= 7 and n != last_phase_ref[0]:
-                    if last_phase_ref[0] < 0:
+                    # 1) 스피너를 먼저 현재 Phase 메시지로 갱신 (이전 단계 문구가 패널 아래에 남지 않도록)
+                    progress.update(task, description=msg)
+                    if last_phase_ref[0] >= 0:
                         console.print()
+                    # 2) 해당 Phase 패널 출력 → 아래에는 이 Phase 로그만 나옴
                     console.print(
                         Panel(
                             "",
@@ -366,6 +372,7 @@ def _make_progress_callback(console, progress, task, last_phase_ref):
                         )
                     )
                     last_phase_ref[0] = n
+                    return
         progress.update(task, description=msg)
     return update_progress
 
