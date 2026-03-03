@@ -34,21 +34,7 @@ from ..utils.logger import get_logger
 
 logger = get_logger("pptx_generator")
 
-# Modern 스타일 색상 상수
-STYLE_COLORS = {
-    "primary": RGBColor(0, 44, 95),        # #002C5F - 다크 블루
-    "secondary": RGBColor(0, 170, 210),    # #00AAD2 - 스카이 블루
-    "accent": RGBColor(230, 51, 18),       # #E63312 - 레드
-    "teal": RGBColor(0, 161, 156),         # #00A19C - 청록색
-    "dark_bg": RGBColor(26, 26, 26),       # #1A1A1A - 다크 배경
-    "dark_blue": RGBColor(0, 44, 95),      # 별칭
-    "sky_blue": RGBColor(0, 170, 210),     # 별칭
-    "white": RGBColor(255, 255, 255),
-    "light": RGBColor(245, 245, 245),      # #F5F5F5 - 밝은 회색
-    "text_dark": RGBColor(51, 51, 51),
-    "text_light": RGBColor(153, 153, 153),
-    "text_gray": RGBColor(102, 102, 102),  # #666666
-}
+# 폰트·색상은 template_manager.design_system 적용 (로드한 템플릿 PPTX 테마에서 동적 추출).
 
 
 class PPTXGenerator:
@@ -866,7 +852,7 @@ class PPTXGenerator:
             Inches(7.5),
         )
         bg.fill.solid()
-        bg.fill.fore_color.rgb = STYLE_COLORS.get(background_color, STYLE_COLORS["dark_blue"])
+        bg.fill.fore_color.rgb = self.template_manager.get_color(background_color or "dark_blue")
         bg.line.fill.background()
 
         # 메인 헤드라인
@@ -898,7 +884,7 @@ class PPTXGenerator:
             sub_p = sub_tf.paragraphs[0]
             sub_p.text = subheadline
             sub_p.font.size = Pt(24)
-            sub_p.font.color.rgb = STYLE_COLORS["sky_blue"]
+            sub_p.font.color.rgb = self.template_manager.get_color("sky_blue")
             sub_p.alignment = PP_ALIGN.CENTER
 
         # 발표자 노트 추가
@@ -930,7 +916,7 @@ class PPTXGenerator:
             Inches(7.5),
         )
         bg.fill.solid()
-        bg.fill.fore_color.rgb = STYLE_COLORS["dark_blue"]
+        bg.fill.fore_color.rgb = self.template_manager.get_color("dark_blue")
         bg.line.fill.background()
 
         # Phase 번호 (큰 아웃라인 숫자)
@@ -945,7 +931,7 @@ class PPTXGenerator:
         num_p.text = f"0{phase_number}" if phase_number < 10 else str(phase_number)
         num_p.font.size = Pt(120)
         num_p.font.bold = True
-        num_p.font.color.rgb = STYLE_COLORS["sky_blue"]
+        num_p.font.color.rgb = self.template_manager.get_color("sky_blue")
         num_p.alignment = PP_ALIGN.CENTER
 
         # Phase 제목
@@ -1005,11 +991,11 @@ class PPTXGenerator:
                 Inches(7.5),
             )
             bg.fill.solid()
-            bg.fill.fore_color.rgb = STYLE_COLORS["dark_blue"]
+            bg.fill.fore_color.rgb = self.template_manager.get_color("dark_blue")
             bg.line.fill.background()
             text_color = RGBColor(255, 255, 255)
         else:
-            text_color = STYLE_COLORS["dark_blue"]
+            text_color = self.template_manager.get_color("dark_blue")
 
         # 핵심 메시지
         msg_box = slide.shapes.add_textbox(
@@ -1040,7 +1026,7 @@ class PPTXGenerator:
             sup_p = sup_tf.paragraphs[0]
             sup_p.text = supporting_text
             sup_p.font.size = Pt(18)
-            sup_p.font.color.rgb = STYLE_COLORS["sky_blue"] if background_style == "dark" else STYLE_COLORS["text_gray"]
+            sup_p.font.color.rgb = self.template_manager.get_color("sky_blue") if background_style == "dark" else self.template_manager.get_color("text_gray")
             sup_p.alignment = PP_ALIGN.CENTER
 
         # 발표자 노트 추가
@@ -1090,7 +1076,7 @@ class PPTXGenerator:
         as_title_p.text = as_is.get("title", "AS-IS (현재)")
         as_title_p.font.size = Pt(24)
         as_title_p.font.bold = True
-        as_title_p.font.color.rgb = STYLE_COLORS["text_gray"]
+        as_title_p.font.color.rgb = self.template_manager.get_color("text_gray")
 
         # AS-IS 내용
         as_content_box = slide.shapes.add_textbox(
@@ -1105,7 +1091,7 @@ class PPTXGenerator:
             p = as_content_tf.paragraphs[0] if i == 0 else as_content_tf.add_paragraph()
             p.text = f"• {item}"
             p.font.size = Pt(14)
-            p.font.color.rgb = STYLE_COLORS["text_gray"]
+            p.font.color.rgb = self.template_manager.get_color("text_gray")
             p.space_after = Pt(8)
 
         # TO-BE 영역 (오른쪽)
@@ -1117,7 +1103,7 @@ class PPTXGenerator:
             Inches(5.5),
         )
         to_be_bg.fill.solid()
-        to_be_bg.fill.fore_color.rgb = STYLE_COLORS["dark_blue"]
+        to_be_bg.fill.fore_color.rgb = self.template_manager.get_color("dark_blue")
         to_be_bg.line.fill.background()
 
         # TO-BE 제목
@@ -1159,7 +1145,7 @@ class PPTXGenerator:
             Inches(0.5),
         )
         arrow.fill.solid()
-        arrow.fill.fore_color.rgb = STYLE_COLORS["sky_blue"]
+        arrow.fill.fore_color.rgb = self.template_manager.get_color("sky_blue")
         arrow.line.fill.background()
 
         # 발표자 노트 추가
@@ -1200,7 +1186,7 @@ class PPTXGenerator:
                 Inches(0.5),
             )
             num_bg.fill.solid()
-            num_bg.fill.fore_color.rgb = STYLE_COLORS["sky_blue"] if is_current else STYLE_COLORS["dark_blue"]
+            num_bg.fill.fore_color.rgb = self.template_manager.get_color("sky_blue") if is_current else self.template_manager.get_color("dark_blue")
             num_bg.line.fill.background()
 
             # 번호
@@ -1230,7 +1216,7 @@ class PPTXGenerator:
             item_p.text = item
             item_p.font.size = Pt(18)
             item_p.font.bold = is_current
-            item_p.font.color.rgb = STYLE_COLORS["dark_blue"] if is_current else STYLE_COLORS["text_gray"]
+            item_p.font.color.rgb = self.template_manager.get_color("dark_blue") if is_current else self.template_manager.get_color("text_gray")
 
         # 발표자 노트 추가
         if notes:
@@ -1315,7 +1301,7 @@ class PPTXGenerator:
             type_p.text = content_type
             type_p.font.size = Pt(11)
             type_p.font.bold = True
-            type_p.font.color.rgb = STYLE_COLORS["sky_blue"]
+            type_p.font.color.rgb = self.template_manager.get_color("sky_blue")
 
             # 제목
             ex_title_box = slide.shapes.add_textbox(
@@ -1330,7 +1316,7 @@ class PPTXGenerator:
             ex_title_p.text = example.get("title", "")
             ex_title_p.font.size = Pt(13)
             ex_title_p.font.bold = True
-            ex_title_p.font.color.rgb = STYLE_COLORS["dark_blue"]
+            ex_title_p.font.color.rgb = self.template_manager.get_color("dark_blue")
 
             # 설명
             desc_box = slide.shapes.add_textbox(
@@ -1344,7 +1330,7 @@ class PPTXGenerator:
             desc_p = desc_tf.paragraphs[0]
             desc_p.text = example.get("description", "")[:80]
             desc_p.font.size = Pt(10)
-            desc_p.font.color.rgb = STYLE_COLORS["text_gray"]
+            desc_p.font.color.rgb = self.template_manager.get_color("text_gray")
 
             # 채널/해시태그
             channel_box = slide.shapes.add_textbox(
@@ -1358,7 +1344,7 @@ class PPTXGenerator:
             channel = example.get("channel", "")
             channel_p.text = f"#{channel}" if channel else ""
             channel_p.font.size = Pt(9)
-            channel_p.font.color.rgb = STYLE_COLORS["sky_blue"]
+            channel_p.font.color.rgb = self.template_manager.get_color("sky_blue")
 
         # 발표자 노트 추가
         if notes:
@@ -1390,8 +1376,8 @@ class PPTXGenerator:
         start_x = (13.33 - total_width) / 2
 
         channel_colors = [
-            STYLE_COLORS["dark_blue"],
-            STYLE_COLORS["sky_blue"],
+            self.template_manager.get_color("dark_blue"),
+            self.template_manager.get_color("sky_blue"),
             RGBColor(230, 126, 34),  # Orange
             RGBColor(155, 89, 182),  # Purple
         ]
@@ -1465,7 +1451,7 @@ class PPTXGenerator:
             role_p = role_tf.paragraphs[0]
             role_p.text = channel.get("role", "")
             role_p.font.size = Pt(10)
-            role_p.font.color.rgb = STYLE_COLORS["text_gray"]
+            role_p.font.color.rgb = self.template_manager.get_color("text_gray")
 
             # KPI 영역
             kpi_bg = slide.shapes.add_shape(
@@ -1509,7 +1495,7 @@ class PPTXGenerator:
                 kpi_name_p = kpi_item_tf.paragraphs[0]
                 kpi_name_p.text = kpi.get("name", "")
                 kpi_name_p.font.size = Pt(9)
-                kpi_name_p.font.color.rgb = STYLE_COLORS["text_gray"]
+                kpi_name_p.font.color.rgb = self.template_manager.get_color("text_gray")
 
                 # KPI 값
                 kpi_value_p = kpi_item_tf.add_paragraph()
@@ -1552,7 +1538,7 @@ class PPTXGenerator:
             Inches(1.2),
         )
         header_bg.fill.solid()
-        header_bg.fill.fore_color.rgb = STYLE_COLORS["dark_blue"]
+        header_bg.fill.fore_color.rgb = self.template_manager.get_color("dark_blue")
         header_bg.line.fill.background()
 
         # 캠페인명
@@ -1580,7 +1566,7 @@ class PPTXGenerator:
         period_p = period_tf.paragraphs[0]
         period_p.text = f"📅 {period}"
         period_p.font.size = Pt(12)
-        period_p.font.color.rgb = STYLE_COLORS["sky_blue"]
+        period_p.font.color.rgb = self.template_manager.get_color("sky_blue")
 
         # 목표
         obj_box = slide.shapes.add_textbox(
@@ -1609,7 +1595,7 @@ class PPTXGenerator:
                 Inches(0.4),
             )
             num_circle.fill.solid()
-            num_circle.fill.fore_color.rgb = STYLE_COLORS["sky_blue"]
+            num_circle.fill.fore_color.rgb = self.template_manager.get_color("sky_blue")
             num_circle.line.fill.background()
 
             # 번호 텍스트
@@ -1644,7 +1630,7 @@ class PPTXGenerator:
                 act_p.text = str(activity)
 
             act_p.font.size = Pt(14)
-            act_p.font.color.rgb = STYLE_COLORS["text_gray"]
+            act_p.font.color.rgb = self.template_manager.get_color("text_gray")
 
         # 발표자 노트 추가
         if notes:
@@ -1688,7 +1674,7 @@ class PPTXGenerator:
             cell = table.cell(0, col_idx)
             cell.text = header
             cell.fill.solid()
-            cell.fill.fore_color.rgb = STYLE_COLORS["dark_blue"]
+            cell.fill.fore_color.rgb = self.template_manager.get_color("dark_blue")
 
             para = cell.text_frame.paragraphs[0]
             para.font.size = Pt(12)
@@ -1735,7 +1721,7 @@ class PPTXGenerator:
         total_amount_cell = table.cell(total_row, 3)
         total_amount_cell.text = total
         total_amount_cell.fill.solid()
-        total_amount_cell.fill.fore_color.rgb = STYLE_COLORS["dark_blue"]
+        total_amount_cell.fill.fore_color.rgb = self.template_manager.get_color("dark_blue")
         total_amount_cell.text_frame.paragraphs[0].font.size = Pt(14)
         total_amount_cell.text_frame.paragraphs[0].font.bold = True
         total_amount_cell.text_frame.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)
@@ -1801,7 +1787,7 @@ class PPTXGenerator:
         proj_p.text = case.get("project_name", "")
         proj_p.font.size = Pt(18)
         proj_p.font.bold = True
-        proj_p.font.color.rgb = STYLE_COLORS["dark_blue"]
+        proj_p.font.color.rgb = self.template_manager.get_color("dark_blue")
 
         # 클라이언트/기간
         info_box = slide.shapes.add_textbox(
@@ -1816,7 +1802,7 @@ class PPTXGenerator:
         period = case.get("period", "")
         info_p.text = f"{client} | {period}"
         info_p.font.size = Pt(12)
-        info_p.font.color.rgb = STYLE_COLORS["text_gray"]
+        info_p.font.color.rgb = self.template_manager.get_color("text_gray")
 
         # 오른쪽: 성과 KPI 영역
         kpi_bg = slide.shapes.add_shape(
@@ -1827,7 +1813,7 @@ class PPTXGenerator:
             Inches(5.5),
         )
         kpi_bg.fill.solid()
-        kpi_bg.fill.fore_color.rgb = STYLE_COLORS["dark_blue"]
+        kpi_bg.fill.fore_color.rgb = self.template_manager.get_color("dark_blue")
         kpi_bg.line.fill.background()
 
         # 성과 제목
@@ -1863,7 +1849,7 @@ class PPTXGenerator:
                 kpi_value_p.text = str(kpi)
             kpi_value_p.font.size = Pt(28)
             kpi_value_p.font.bold = True
-            kpi_value_p.font.color.rgb = STYLE_COLORS["sky_blue"]
+            kpi_value_p.font.color.rgb = self.template_manager.get_color("sky_blue")
 
             # KPI 이름
             kpi_name_p = kpi_tf.add_paragraph()
@@ -1888,7 +1874,7 @@ class PPTXGenerator:
             desc_p = desc_tf.paragraphs[0]
             desc_p.text = desc[:150] + "..." if len(desc) > 150 else desc
             desc_p.font.size = Pt(11)
-            desc_p.font.color.rgb = STYLE_COLORS["text_gray"]
+            desc_p.font.color.rgb = self.template_manager.get_color("text_gray")
 
         # 발표자 노트 추가
         if notes:
@@ -1925,7 +1911,7 @@ class PPTXGenerator:
             MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.15), Inches(7.5)
         )
         accent_bar.fill.solid()
-        accent_bar.fill.fore_color.rgb = STYLE_COLORS["primary"]
+        accent_bar.fill.fore_color.rgb = self.template_manager.get_color("primary")
         accent_bar.line.fill.background()
 
         # 타이틀
@@ -1934,14 +1920,14 @@ class PPTXGenerator:
         title_p.text = "EXECUTIVE SUMMARY"
         title_p.font.size = Pt(36)
         title_p.font.bold = True
-        title_p.font.color.rgb = STYLE_COLORS["primary"]
+        title_p.font.color.rgb = self.template_manager.get_color("primary")
 
         # 프로젝트 목표
         obj_bg = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.5), Inches(1.2), Inches(12.3), Inches(0.6)
         )
         obj_bg.fill.solid()
-        obj_bg.fill.fore_color.rgb = STYLE_COLORS["primary"]
+        obj_bg.fill.fore_color.rgb = self.template_manager.get_color("primary")
         obj_bg.line.fill.background()
 
         obj_box = slide.shapes.add_textbox(Inches(0.7), Inches(1.3), Inches(11.9), Inches(0.4))
@@ -1949,10 +1935,10 @@ class PPTXGenerator:
         obj_p.text = project_objective
         obj_p.font.size = Pt(16)
         obj_p.font.bold = True
-        obj_p.font.color.rgb = STYLE_COLORS["white"]
+        obj_p.font.color.rgb = self.template_manager.get_color("white")
 
         # Win Themes (3개 카드)
-        win_colors = [STYLE_COLORS["primary"], STYLE_COLORS["secondary"], STYLE_COLORS["teal"]]
+        win_colors = [self.template_manager.get_color("primary"), self.template_manager.get_color("secondary"), self.template_manager.get_color("teal")]
         for i, theme in enumerate(win_themes[:3]):
             x = Inches(0.5 + i * 4.2)
             card = slide.shapes.add_shape(
@@ -1967,7 +1953,7 @@ class PPTXGenerator:
             name_p.text = theme.get("name", "")
             name_p.font.size = Pt(14)
             name_p.font.bold = True
-            name_p.font.color.rgb = STYLE_COLORS["white"]
+            name_p.font.color.rgb = self.template_manager.get_color("white")
             name_p.alignment = PP_ALIGN.CENTER
 
             desc_box = slide.shapes.add_textbox(x + Inches(0.1), Inches(2.6), Inches(3.8), Inches(0.7))
@@ -1975,7 +1961,7 @@ class PPTXGenerator:
             desc_p = desc_box.text_frame.paragraphs[0]
             desc_p.text = theme.get("description", "")
             desc_p.font.size = Pt(11)
-            desc_p.font.color.rgb = STYLE_COLORS["white"]
+            desc_p.font.color.rgb = self.template_manager.get_color("white")
             desc_p.alignment = PP_ALIGN.CENTER
 
         # KPI 카드 (4개)
@@ -1985,7 +1971,7 @@ class PPTXGenerator:
                 MSO_SHAPE.ROUNDED_RECTANGLE, x, Inches(3.6), Inches(3.0), Inches(1.5)
             )
             kpi_card.fill.solid()
-            kpi_card.fill.fore_color.rgb = STYLE_COLORS["light"]
+            kpi_card.fill.fore_color.rgb = self.template_manager.get_color("light")
             kpi_card.line.fill.background()
 
             metric_box = slide.shapes.add_textbox(x, Inches(3.7), Inches(3.0), Inches(0.35))
@@ -1993,7 +1979,7 @@ class PPTXGenerator:
             metric_p.text = kpi.get("metric", "")
             metric_p.font.size = Pt(14)
             metric_p.font.bold = True
-            metric_p.font.color.rgb = STYLE_COLORS["primary"]
+            metric_p.font.color.rgb = self.template_manager.get_color("primary")
             metric_p.alignment = PP_ALIGN.CENTER
 
             target_box = slide.shapes.add_textbox(x, Inches(4.05), Inches(3.0), Inches(0.4))
@@ -2001,7 +1987,7 @@ class PPTXGenerator:
             target_p.text = kpi.get("target", "")
             target_p.font.size = Pt(18)
             target_p.font.bold = True
-            target_p.font.color.rgb = STYLE_COLORS["text_dark"]
+            target_p.font.color.rgb = self.template_manager.get_color("text_dark")
             target_p.alignment = PP_ALIGN.CENTER
 
             basis_box = slide.shapes.add_textbox(x, Inches(4.5), Inches(3.0), Inches(0.55))
@@ -2009,7 +1995,7 @@ class PPTXGenerator:
             basis_p = basis_box.text_frame.paragraphs[0]
             basis_p.text = kpi.get("basis", kpi.get("calculation_basis", ""))
             basis_p.font.size = Pt(9)
-            basis_p.font.color.rgb = STYLE_COLORS["text_gray"]
+            basis_p.font.color.rgb = self.template_manager.get_color("text_gray")
             basis_p.alignment = PP_ALIGN.CENTER
 
         # Why Us
@@ -2020,7 +2006,7 @@ class PPTXGenerator:
         why_p.text = why_text
         why_p.font.size = Pt(12)
         why_p.font.bold = True
-        why_p.font.color.rgb = STYLE_COLORS["secondary"]
+        why_p.font.color.rgb = self.template_manager.get_color("secondary")
         why_p.alignment = PP_ALIGN.CENTER
 
         if notes:
@@ -2052,7 +2038,7 @@ class PPTXGenerator:
             MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.15), Inches(7.5)
         )
         accent_bar.fill.solid()
-        accent_bar.fill.fore_color.rgb = STYLE_COLORS["primary"]
+        accent_bar.fill.fore_color.rgb = self.template_manager.get_color("primary")
         accent_bar.line.fill.background()
 
         # 타이틀
@@ -2061,7 +2047,7 @@ class PPTXGenerator:
         title_p.text = "NEXT STEP"
         title_p.font.size = Pt(36)
         title_p.font.bold = True
-        title_p.font.color.rgb = STYLE_COLORS["primary"]
+        title_p.font.color.rgb = self.template_manager.get_color("primary")
 
         # 헤드라인
         headline_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.1), Inches(12), Inches(0.5))
@@ -2069,10 +2055,10 @@ class PPTXGenerator:
         headline_p.text = headline
         headline_p.font.size = Pt(24)
         headline_p.font.bold = True
-        headline_p.font.color.rgb = STYLE_COLORS["text_dark"]
+        headline_p.font.color.rgb = self.template_manager.get_color("text_dark")
 
         # Step 카드들
-        step_colors = [STYLE_COLORS["primary"]] + [STYLE_COLORS["secondary"]] * 10
+        step_colors = [self.template_manager.get_color("primary")] + [self.template_manager.get_color("secondary")] * 10
         for i, step in enumerate(steps[:4]):
             x = Inches(0.5 + i * 3.2)
             card = slide.shapes.add_shape(
@@ -2087,7 +2073,7 @@ class PPTXGenerator:
             num_p.text = f"STEP {i + 1}"
             num_p.font.size = Pt(11)
             num_p.font.bold = True
-            num_p.font.color.rgb = STYLE_COLORS["white"]
+            num_p.font.color.rgb = self.template_manager.get_color("white")
             num_p.alignment = PP_ALIGN.CENTER
 
             title_b = slide.shapes.add_textbox(x, Inches(2.2), Inches(3.0), Inches(0.4))
@@ -2095,14 +2081,14 @@ class PPTXGenerator:
             title_p2.text = step.get("title", "")
             title_p2.font.size = Pt(18)
             title_p2.font.bold = True
-            title_p2.font.color.rgb = STYLE_COLORS["white"]
+            title_p2.font.color.rgb = self.template_manager.get_color("white")
             title_p2.alignment = PP_ALIGN.CENTER
 
             date_box = slide.shapes.add_textbox(x, Inches(2.6), Inches(3.0), Inches(0.3))
             date_p = date_box.text_frame.paragraphs[0]
             date_p.text = step.get("date", "")
             date_p.font.size = Pt(12)
-            date_p.font.color.rgb = STYLE_COLORS["white"]
+            date_p.font.color.rgb = self.template_manager.get_color("white")
             date_p.alignment = PP_ALIGN.CENTER
 
             desc_box = slide.shapes.add_textbox(x + Inches(0.1), Inches(2.95), Inches(2.8), Inches(0.55))
@@ -2110,7 +2096,7 @@ class PPTXGenerator:
             desc_p = desc_box.text_frame.paragraphs[0]
             desc_p.text = step.get("description", "")
             desc_p.font.size = Pt(10)
-            desc_p.font.color.rgb = STYLE_COLORS["white"]
+            desc_p.font.color.rgb = self.template_manager.get_color("white")
             desc_p.alignment = PP_ALIGN.CENTER
 
             if i < len(steps) - 1:
@@ -2119,14 +2105,14 @@ class PPTXGenerator:
                 arrow_p.text = "→"
                 arrow_p.font.size = Pt(20)
                 arrow_p.font.bold = True
-                arrow_p.font.color.rgb = STYLE_COLORS["text_light"]
+                arrow_p.font.color.rgb = self.template_manager.get_color("text_light")
 
         # CTA 영역
         cta_bg = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.5), Inches(3.9), Inches(12.3), Inches(1.2)
         )
         cta_bg.fill.solid()
-        cta_bg.fill.fore_color.rgb = STYLE_COLORS["light"]
+        cta_bg.fill.fore_color.rgb = self.template_manager.get_color("light")
         cta_bg.line.fill.background()
 
         cta_title = slide.shapes.add_textbox(Inches(0.7), Inches(4.0), Inches(11.9), Inches(0.35))
@@ -2134,7 +2120,7 @@ class PPTXGenerator:
         cta_title_p.text = "저희가 제안하는 것"
         cta_title_p.font.size = Pt(14)
         cta_title_p.font.bold = True
-        cta_title_p.font.color.rgb = STYLE_COLORS["primary"]
+        cta_title_p.font.color.rgb = self.template_manager.get_color("primary")
 
         for i, cta in enumerate(call_to_action[:4]):
             x = Inches(0.9) if i < 2 else Inches(6.5)
@@ -2143,7 +2129,7 @@ class PPTXGenerator:
             cta_p = cta_box.text_frame.paragraphs[0]
             cta_p.text = f"✓ {cta}"
             cta_p.font.size = Pt(12)
-            cta_p.font.color.rgb = STYLE_COLORS["text_dark"]
+            cta_p.font.color.rgb = self.template_manager.get_color("text_dark")
 
         # 연락처
         if contact_info:
@@ -2155,7 +2141,7 @@ class PPTXGenerator:
         contact_p = contact_box.text_frame.paragraphs[0]
         contact_p.text = contact_text
         contact_p.font.size = Pt(12)
-        contact_p.font.color.rgb = STYLE_COLORS["text_gray"]
+        contact_p.font.color.rgb = self.template_manager.get_color("text_gray")
         contact_p.alignment = PP_ALIGN.CENTER
 
         if notes:
@@ -2182,7 +2168,7 @@ class PPTXGenerator:
             MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.33), Inches(7.5)
         )
         bg.fill.solid()
-        bg.fill.fore_color.rgb = STYLE_COLORS["dark_bg"]
+        bg.fill.fore_color.rgb = self.template_manager.get_color("dark_bg")
         bg.line.fill.background()
 
         # Phase 번호
@@ -2201,7 +2187,7 @@ class PPTXGenerator:
         part_p.text = f"PART {num_text}"
         part_p.font.size = Pt(16)
         part_p.font.bold = True
-        part_p.font.color.rgb = STYLE_COLORS["secondary"]
+        part_p.font.color.rgb = self.template_manager.get_color("secondary")
 
         # 스토리 타이틀
         if story_title:
@@ -2209,7 +2195,7 @@ class PPTXGenerator:
             story_p = story_box.text_frame.paragraphs[0]
             story_p.text = story_title
             story_p.font.size = Pt(20)
-            story_p.font.color.rgb = STYLE_COLORS["secondary"]
+            story_p.font.color.rgb = self.template_manager.get_color("secondary")
 
         # 메인 타이틀
         y_title = Inches(3.9) if story_title else Inches(3.6)
@@ -2218,7 +2204,7 @@ class PPTXGenerator:
         title_p.text = phase_title
         title_p.font.size = Pt(48)
         title_p.font.bold = True
-        title_p.font.color.rgb = STYLE_COLORS["white"]
+        title_p.font.color.rgb = self.template_manager.get_color("white")
 
         # 서브타이틀
         if phase_subtitle:
@@ -2227,7 +2213,7 @@ class PPTXGenerator:
             sub_p = sub_box.text_frame.paragraphs[0]
             sub_p.text = phase_subtitle
             sub_p.font.size = Pt(16)
-            sub_p.font.color.rgb = STYLE_COLORS["text_light"]
+            sub_p.font.color.rgb = self.template_manager.get_color("text_light")
 
         # Win Theme 배지
         if win_theme:
@@ -2235,7 +2221,7 @@ class PPTXGenerator:
                 MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(6.5), Inches(8), Inches(0.6)
             )
             badge_bg.fill.solid()
-            badge_bg.fill.fore_color.rgb = STYLE_COLORS["secondary"]
+            badge_bg.fill.fore_color.rgb = self.template_manager.get_color("secondary")
             badge_bg.line.fill.background()
 
             badge_box = slide.shapes.add_textbox(Inches(0.8), Inches(6.58), Inches(8), Inches(0.45))
@@ -2243,7 +2229,7 @@ class PPTXGenerator:
             badge_p.text = f"💡 Win Theme: {win_theme}"
             badge_p.font.size = Pt(14)
             badge_p.font.bold = True
-            badge_p.font.color.rgb = STYLE_COLORS["white"]
+            badge_p.font.color.rgb = self.template_manager.get_color("white")
 
         if notes:
             slide.notes_slide.notes_text_frame.text = notes

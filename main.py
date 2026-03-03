@@ -89,7 +89,8 @@ def generate(
     template: str = typer.Option(
         "guide_template",
         "--template",
-        help="PPTX 템플릿/스타일명",
+        "-T",
+        help="템플릿 PPTX 파일명(확장자 제외). 미지정 시 templates 폴더에서 'guide' 포함 .pptx 자동 선택 후 해당 파일 규칙으로 생성.",
     ),
     save_json: bool = typer.Option(
         False,
@@ -236,9 +237,14 @@ async def _generate_async_impl(
     _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
         get_settings().llm_provider, "LLM"
     )
-    console.print(LOG_SEPARATOR)
-    console.print(f"[bold cyan]Step 1: 콘텐츠 생성 ({_llm} - Impact-8)[/bold cyan]")
-    console.print(LOG_SEPARATOR)
+    console.print()
+    console.print(
+        Panel(
+            f"[bold]{_llm}[/bold] - Impact-8",
+            title="[bold]Step 1: 콘텐츠 생성[/bold]",
+            border_style="green",
+        )
+    )
 
     proposal_orchestrator = ProposalOrchestrator(api_key=api_key)
 
@@ -263,7 +269,10 @@ async def _generate_async_impl(
             progress_callback=update_progress,
         )
 
-    console.print("[green]Step 1 완료[/green]")
+    console.print(
+        Panel("[green]✓ 완료[/green]", title="[bold]Step 1 완료[/bold]", border_style="green")
+    )
+    console.print()
 
     # 콘텐츠 요약 출력
     summary = proposal_orchestrator.get_proposal_summary(content)
@@ -280,9 +289,14 @@ async def _generate_async_impl(
         console.print(f"[dim]JSON 저장: {json_path}[/dim]")
 
     # Step 2: PPTX 생성 ([회사명])
-    console.print(LOG_SEPARATOR)
-    console.print("[bold cyan]Step 2: PPTX 생성 (Modern 스타일)[/bold cyan]")
-    console.print(LOG_SEPARATOR)
+    console.print()
+    console.print(
+        Panel(
+            "Modern 스타일",
+            title="[bold]Step 2: PPTX 생성[/bold]",
+            border_style="green",
+        )
+    )
 
     pptx_orchestrator = PPTXOrchestrator()
 
@@ -304,7 +318,10 @@ async def _generate_async_impl(
             progress_callback=update_progress,
         )
 
-    console.print("[green]Step 2 완료[/green]")
+    console.print(
+        Panel("[green]✓ 완료[/green]", title="[bold]Step 2 완료[/bold]", border_style="green")
+    )
+    console.print()
 
     # 결과 출력
     total_slides = summary["total_slides"]
@@ -334,9 +351,15 @@ def _make_progress_callback(console, progress, task, last_phase_ref):
             if len(tok) == 2 and tok[1].isdigit():
                 n = int(tok[1])
                 if 0 <= n <= 7 and n != last_phase_ref[0]:
-                    console.print(LOG_SEPARATOR)
-                    console.print(f"[bold cyan]Phase {n}: {PHASE_TITLES.get(n, '')}[/bold cyan]")
-                    console.print(LOG_SEPARATOR)
+                    if last_phase_ref[0] < 0:
+                        console.print()
+                    console.print(
+                        Panel(
+                            "",
+                            title=f"[bold]Phase {n}: {PHASE_TITLES.get(n, '')}[/bold]",
+                            border_style="green",
+                        )
+                    )
                     last_phase_ref[0] = n
         progress.update(task, description=msg)
     return update_progress
@@ -496,7 +519,7 @@ def templates():
     templates_dir = get_settings().templates_dir
 
     console.print("\n[bold]디자인 스타일:[/bold]")
-    console.print("  - [cyan]guide_template[/cyan] (기본) - 가이드 템플릿 (templates/ 내 guide 포함 .pptx 또는 빈 프레젠테이션)")
+    console.print("  - [cyan]guide_template[/cyan] (기본) - templates/ 내 이름에 'guide' 포함 .pptx 자동 선택, 해당 파일 테마로 제안서 생성")
 
     if not templates_dir.exists():
         console.print("\n[yellow]templates 디렉토리가 없습니다.[/yellow]")

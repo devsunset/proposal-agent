@@ -107,7 +107,7 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator)
 │   ├── orchestrators/          # proposal_orchestrator, pptx_orchestrator
 │   └── utils/                  # logger, path_utils (safe_filename, safe_output_path)
 ├── tests/                      # pytest (parsers, path_utils, settings, template_manager 등)
-├── templates/                  # PPTX 템플릿 (선택, .gitignore 대상)
+├── templates/                  # PPTX 템플릿 (지정한 파일 또는 'guide' 포함 .pptx 자동 선택, 테마로 디자인 규칙 적용)
 ├── company_data/               # 회사 정보 JSON (기본: company_profile.json)
 ├── input/                      # RFP 입력
 ├── output/                     # 생성된 PPTX (프로젝트명_제안서.pptx)
@@ -123,6 +123,15 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator)
 | PPTX 생성 | python-pptx, TemplateManager 디자인 시스템 |
 | 데이터 | Pydantic v2, JSON |
 | CLI | Typer, Rich |
+
+## 템플릿·폰트/디자인 가이드
+
+제안서는 **지정한 템플릿 PPTX**(또는 `--template` 미지정 시 `templates/` 폴더에서 **이름에 'guide'가 포함된 .pptx**를 동적으로 선택)를 기준으로 생성됩니다.
+
+- **레이아웃·테마**: 선택된 PPTX의 슬라이드 레이아웃과 테마를 그대로 사용합니다.
+- **폰트·색상**: 해당 PPTX 파일의 **테마(Theme)** 에서 색상·폰트를 읽어와 제안서 작성 규칙으로 적용합니다. 별도 `design_guide.json` 없이, 템플릿 파일만 맞추면 동일한 디자인 규칙으로 생성됩니다.
+
+실행 시 `--template my_company` 처럼 템플릿을 주면 `templates/my_company.pptx`를 사용하고, 생략하면 `templates/guide_template.pptx` 또는 `guide`가 들어간 첫 .pptx가 자동 선택됩니다.
 
 ## 가이드 문서
 
