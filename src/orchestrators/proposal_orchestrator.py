@@ -188,7 +188,7 @@ class ProposalOrchestrator:
         try:
             return json.loads(data_path.read_text(encoding="utf-8"))
         except Exception as e:
-            logger.error("회사 데이터 로드 실패: %s: %s", type(e).__name__, str(e)[:200])
+            logger.error("회사 데이터 로드 실패: {}: {}", type(e).__name__, str(e)[:200])
             raise
 
     def save_content_json(
