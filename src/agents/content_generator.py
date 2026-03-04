@@ -1,7 +1,7 @@
 """
-제안서 콘텐츠 생성 에이전트 (v4.0 - Impact-8 Framework + 고도화)
+제안서 콘텐츠 생성 에이전트 (Impact-8 Framework)
 
-v4.0: Cross-Phase Context, 산업 통계 주입, 네거티브 프롬프트 강화,
+Cross-Phase Context, 산업 통계 주입, 네거티브 프롬프트 강화,
        슬라이드 품질 스코어링, Phase 체크포인트 저장
 """
 
@@ -58,7 +58,7 @@ SLIDE_KEY_ALIASES = {
 
 
 class ContentGenerator(BaseAgent):
-    """제안서 콘텐츠 생성 에이전트 (v3.6 - Impact-8 Framework + 설득 구조 강화)"""
+    """제안서 콘텐츠 생성 에이전트 (Impact-8 Framework)"""
 
     # Impact-8 Phase 프롬프트 매핑
     PHASE_PROMPTS = {
@@ -110,11 +110,11 @@ class ContentGenerator(BaseAgent):
         settings = get_settings()
         phases: List[PhaseContent] = []
         teaser: Optional[TeaserContent] = None
-        win_themes: List[Dict[str, Any]] = []  # v3.6: Win Theme 전달 체인
+        win_themes: List[Dict[str, Any]] = []  # Win Theme 전달 체인
         diagnostics: List[Dict[str, Any]] = []
-        # v4.0: Cross-Phase Context — 이전 Phase 핵심 결론 누적
+        # Cross-Phase Context — 이전 Phase 핵심 결론 누적
         cross_phase_summaries: List[Dict[str, Any]] = []
-        # v4.0: 체크포인트 디렉터리
+        # 체크포인트 디렉터리
         checkpoint_dir: Optional[Path] = None
         if settings.enable_checkpoint:
             checkpoint_dir = settings.output_dir / "_checkpoints"
@@ -122,7 +122,7 @@ class ContentGenerator(BaseAgent):
 
         rfp_analysis: RFPAnalysis = input_data["rfp_analysis"]
 
-        # 제안서 유형 판단 (v3.6: RFP에서 추출한 project_type 우선 사용)
+        # 제안서 유형 판단 (RFP에서 추출한 project_type 우선 사용)
         proposal_type = self._determine_proposal_type(
             input_data.get("proposal_type") or getattr(rfp_analysis, 'project_type', None),
             rfp_analysis
@@ -182,12 +182,12 @@ class ContentGenerator(BaseAgent):
             "elapsed_sec": elapsed1,
             "json_ok": bool(phase1_raw and phase1_raw.get("slides")),
         })
-        # v4.0: 체크포인트 저장
+        # 체크포인트 저장
         self._save_checkpoint(checkpoint_dir, 1, phase1_content)
-        # v4.0: Cross-Phase Context 업데이트
+        # Cross-Phase Context 업데이트
         cross_phase_summaries.append(self._extract_phase_summary(phase1_content))
 
-        # v3.6: Phase 1 응답에서 Win Theme 추출
+        # Phase 1 응답에서 Win Theme 추출
         win_themes = self._extract_win_themes(phase1_raw)
         if win_themes:
             logger.info("Win Theme {}개 확정: {}", len(win_themes), [wt.get('name', '') for wt in win_themes])
@@ -198,7 +198,7 @@ class ContentGenerator(BaseAgent):
                 win_themes = win_theme_candidates
                 logger.info("RFP Win Theme 후보 {}개 사용 (폴백)", len(win_themes))
 
-        # v4.0: 품질 스코어러 초기화
+        # 품질 스코어러 초기화
         scorer = SlideQualityScorer() if settings.enable_quality_scoring else None
 
         # Phase 2~7 순차 생성 (단계별 로그, Win Theme 전달, Cross-Phase Context)
@@ -226,7 +226,7 @@ class ContentGenerator(BaseAgent):
             elapsed_p = round(time.perf_counter() - t0, 2)
             logger.info("Phase {}: {} 생성 완료 ({}슬라이드, {:.1f}초)", phase_num, PHASE_TITLES[phase_num], len(phase_content.slides), elapsed_p)
 
-            # v4.0: 슬라이드 품질 스코어링 (경고 출력)
+            # 슬라이드 품질 스코어링 (경고 출력)
             quality_score = 0.0
             if scorer:
                 report = scorer.score_phase(phase_content, settings.min_slide_quality_score)
@@ -244,9 +244,9 @@ class ContentGenerator(BaseAgent):
                 "json_ok": len(phase_content.slides) > 0,
                 "quality_score": round(quality_score, 1),
             })
-            # v4.0: 체크포인트 저장
+            # 체크포인트 저장
             self._save_checkpoint(checkpoint_dir, phase_num, phase_content)
-            # v4.0: Cross-Phase Context 업데이트
+            # Cross-Phase Context 업데이트
             cross_phase_summaries.append(self._extract_phase_summary(phase_content))
 
         # 핵심 메시지 추출 (Executive Summary/Teaser에서)
@@ -254,7 +254,7 @@ class ContentGenerator(BaseAgent):
             teaser, phases[0] if phases else None
         )
 
-        # v3.6: Win Theme을 WinTheme 모델로 변환
+        # Win Theme을 WinTheme 모델로 변환
         win_theme_models = self._build_win_theme_models(win_themes)
 
         if diagnostics_out is not None:
@@ -481,7 +481,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         win_themes: Optional[List[Dict[str, Any]]] = None,
         cross_phase_summaries: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
-        """Phase별 user_message 구성 (v4.0: 통계 주입, Cross-Phase Context, 네거티브 프롬프트)"""
+        """Phase별 user_message 구성 (통계 주입, Cross-Phase Context, 네거티브 프롬프트)"""
 
         # 프로젝트 유형별 슬라이드 수 결정
         type_config = get_config(ConfigProposalType(proposal_type.value))
@@ -490,7 +490,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         max_slides = phase_config.max_slides if phase_config else 10
         special_focus = phase_config.special_focus if phase_config else []
 
-        # v3.6: 평가 기준 전략 섹션
+        # 평가 기준 전략 섹션
         eval_strategy_section = ""
         eval_strategy = getattr(rfp_analysis, 'evaluation_strategy', None)
         if eval_strategy and isinstance(eval_strategy, dict):
@@ -506,7 +506,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 → 배점이 높은 항목에 특히 강조하여 작성하세요.
 """
 
-        # v3.6: Pain Point 섹션
+        # Pain Point 섹션
         pain_point_section = ""
         pain_points = getattr(rfp_analysis, 'pain_points', [])
         if pain_points:
@@ -516,7 +516,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 {points_text}
 """
 
-        # v3.6: Win Theme 컨텍스트 섹션
+        # Win Theme 컨텍스트 섹션
         win_theme_section = ""
         if win_themes and phase_num >= 2:
             wt_lines = []
@@ -530,7 +530,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 → 이 Phase의 콘텐츠가 위 Win Theme과 연결되도록 작성하세요.
 """
 
-        # v4.0: Cross-Phase Context — 이전 Phase 핵심 결론 전달
+        # Cross-Phase Context — 이전 Phase 핵심 결론 전달
         cross_phase_section = ""
         if get_settings().enable_cross_phase_context and cross_phase_summaries:
             recent = cross_phase_summaries[-3:]  # 최근 3개 Phase만
@@ -542,14 +542,14 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
             lines.append("\n→ 위 결론들과 논리적으로 연결되는 내용을 작성하세요.")
             cross_phase_section = "\n" + "\n".join(lines) + "\n"
 
-        # v4.0: 산업 통계 DB 주입
+        # 산업 통계 DB 주입
         stats_section = ""
         if get_settings().enable_industry_stats:
             stats_text = get_relevant_stats(proposal_type.value, phase_num, max_items=5)
             if stats_text:
                 stats_section = f"\n{stats_text}\n"
 
-        # v4.0: 네거티브 프롬프트 (금지 표현 명시)
+        # 네거티브 프롬프트 (금지 표현 명시)
         negative_prompt = """
 ## ★ 절대 금지 사항 (엄격 적용)
 1. **막연한 표현 금지**: "효과적으로", "체계적으로", "전문적으로" → 구체적 수치/방법으로 대체
@@ -590,7 +590,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 {chr(10).join(eval_items) if eval_items else '  (없음)'}
 """
 
-        # KPI 스키마 (v3.6: calculation_basis 추가)
+        # KPI 스키마 (calculation_basis 추가)
         kpi_schema = '''"kpis": [
                 {{"metric": "지표명", "target": "목표값", "baseline": "현재값", "improvement": "개선폭", "calculation_basis": "산출 근거 (어떻게 이 목표를 도출했는지)", "data_source": "데이터 출처"}}
             ],'''
@@ -941,7 +941,7 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
         ]
 
     def _extract_win_themes(self, phase1_raw: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Phase 1 응답에서 Win Theme 추출 (v3.6). 여러 키/형식 폴백."""
+        """Phase 1 응답에서 Win Theme 추출. 여러 키/형식 폴백."""
         # 1) 최상위 win_themes
         win_themes = phase1_raw.get("win_themes") or phase1_raw.get("winThemes")
         if win_themes and isinstance(win_themes, list) and len(win_themes) > 0:
@@ -981,7 +981,7 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
         return []
 
     def _build_win_theme_models(self, win_themes: List[Dict[str, Any]]) -> Optional[List[WinTheme]]:
-        """Win Theme dict 리스트를 WinTheme 모델 리스트로 변환 (v3.6)"""
+        """Win Theme dict 리스트를 WinTheme 모델 리스트로 변환"""
         if not win_themes:
             return None
         models = []
@@ -1035,14 +1035,14 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
         explicit_type: Optional[str],
         rfp_analysis: RFPAnalysis
     ) -> ProposalType:
-        """제안서 유형 판단 (v3.6: RFP project_type 우선 사용)"""
+        """제안서 유형 판단 (RFP project_type 우선 사용)"""
         if explicit_type:
             try:
                 return ProposalType(explicit_type)
             except ValueError:
                 pass
 
-        # v3.6: RFP 분석에서 추출된 project_type 사용
+        # RFP 분석에서 추출된 project_type 사용
         rfp_project_type = getattr(rfp_analysis, 'project_type', None)
         if rfp_project_type and rfp_project_type != "general":
             try:
@@ -1185,7 +1185,7 @@ content_examples 필드를 사용하여:
         return guides.get(phase_num, "")
 
     # -----------------------------------------------------------------------
-    # v4.0: Cross-Phase Context 헬퍼
+    # Cross-Phase Context 헬퍼
     # -----------------------------------------------------------------------
 
     def _extract_phase_summary(self, phase: PhaseContent) -> Dict[str, Any]:
@@ -1211,7 +1211,7 @@ content_examples 필드를 사용하여:
         }
 
     # -----------------------------------------------------------------------
-    # v4.0: 체크포인트 저장
+    # 체크포인트 저장
     # -----------------------------------------------------------------------
 
     def _save_checkpoint(

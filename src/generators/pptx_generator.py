@@ -1,10 +1,9 @@
 """
-PPTX 슬라이드 생성기 (v3.1 - Impact-8 Framework + Win Theme)
+PPTX 슬라이드 생성기 (Impact-8 Framework + Win Theme)
 
 [회사명] 레이어: Modern 스타일 PPTX 생성
 python-pptx를 사용하여 슬라이드 생성
 
-v3.1 추가:
 - Executive Summary 슬라이드
 - Next Step 슬라이드
 - Differentiation 슬라이드
@@ -2000,7 +1999,7 @@ class PPTXGenerator:
             notes_slide.notes_text_frame.text = notes
 
     # ========================================
-    # v3.1 추가: Executive Summary, Next Step, Differentiation
+    # Executive Summary, Next Step, Differentiation
     # ========================================
 
     def add_executive_summary_slide(

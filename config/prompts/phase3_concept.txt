@@ -89,13 +89,13 @@
 - 프레임워크는 다이어그램/도식화
 - 비교표는 우리 강점이 부각되는 디자인
 
-## v3.6: Win Theme 기반 전략 구조화
+## Win Theme 기반 전략 구조화
 전략 프레임워크를 Win Theme과 연결하세요:
 - 핵심 컨셉이 3대 Win Theme을 통합하는 상위 개념이어야 합니다
 - 전략 프레임워크의 각 축이 Win Theme에 대응
 - Concept Reveal, Strategy Synergy Map에 Win Theme 반영
 
-## v3.6: Phase 간 브릿지
+## Phase 간 브릿지
 마지막 슬라이드 key_message에 Phase 4로의 브릿지:
 "이 전략을 채널별로 구체적으로 어떻게 실행하는지 보여드리겠습니다"
 

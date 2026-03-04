@@ -9,7 +9,7 @@ import pytest
 def test_llm_provider_valid(monkeypatch):
     """유효한 LLM_PROVIDER는 통과"""
     from config.settings import Settings
-    for provider in ("claude", "gemini", "groq"):
+    for provider in ("claude", "gemini", "groq", "ollama"):
         monkeypatch.setattr(os, "getenv", lambda k, d="": {"LLM_PROVIDER": provider}.get(k, d))
         # Settings()는 필드 기본값으로 os.getenv를 사용하므로, 직접 값을 넘겨 검증만 테스트
         s = Settings(llm_provider=provider)

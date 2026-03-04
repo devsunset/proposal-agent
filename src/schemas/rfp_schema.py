@@ -94,7 +94,7 @@ class RFPAnalysis(BaseModel):
     RFP 분석 결과 전체 모델.
 
     기본 정보, 요구사항, 평가 기준, 산출물, 일정·예산과 함께
-    v3.6 전략 필드(project_type, pain_points, win_theme_candidates, evaluation_strategy 등)를 포함합니다.
+    전략 필드(project_type, pain_points, win_theme_candidates, evaluation_strategy 등)를 포함합니다.
     """
 
     # 기본 정보
@@ -143,7 +143,7 @@ class RFPAnalysis(BaseModel):
         default_factory=list, description="차별화 포인트"
     )
 
-    # v3.6 추가: 설득 구조 강화 필드
+    # 설득 구조 강화 필드
     project_type: str = Field(
         default="general",
         description="프로젝트 유형 (marketing_pr, event, it_system, public, consulting, general)"

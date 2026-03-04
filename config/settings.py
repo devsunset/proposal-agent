@@ -19,17 +19,18 @@ class Settings(BaseModel):
     """
 
     # -------------------------------------------------------------------------
-    # LLM 프로바이더: claude | gemini | groq (.env의 LLM_PROVIDER로 선택)
+    # LLM 프로바이더: claude | gemini | groq | ollama (.env의 LLM_PROVIDER로 선택)
+    # ollama: 로컬 Ollama 서버, API 키 불필요, 비용/할당량 제한 없음
     # -------------------------------------------------------------------------
     llm_provider: str = os.getenv("LLM_PROVIDER", "gemini").lower().strip()
 
     @field_validator("llm_provider")
     @classmethod
     def validate_llm_provider(cls, v: str) -> str:
-        """LLM_PROVIDER는 claude, gemini, groq 중 하나여야 함."""
-        if v not in ("claude", "gemini", "groq"):
+        """LLM_PROVIDER는 claude, gemini, groq, ollama 중 하나여야 함."""
+        if v not in ("claude", "gemini", "groq", "ollama"):
             raise ValueError(
-                "LLM_PROVIDER must be one of: claude, gemini, groq. "
+                "LLM_PROVIDER must be one of: claude, gemini, groq, ollama. "
                 "Check your .env or environment."
             )
         return v
@@ -55,6 +56,13 @@ class Settings(BaseModel):
     groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
     groq_max_user_message_chars: int = int(os.getenv("GROQ_MAX_USER_MESSAGE_CHARS", "0") or "0")
     groq_max_request_tokens: int = int(os.getenv("GROQ_MAX_REQUEST_TOKENS", "5000") or "5000")
+
+    # -------------------------------------------------------------------------
+    # Ollama (로컬 LLM, LLM_PROVIDER=ollama 일 때)
+    # API 키 불필요. 로컬에서 ollama serve 실행 필요.
+    # -------------------------------------------------------------------------
+    ollama_base_url: str = (os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1") or "http://localhost:11434/v1").strip().rstrip("/") + "/"
+    ollama_model: str = os.getenv("OLLAMA_MODEL", "llama3.2:latest").strip()
 
     # -------------------------------------------------------------------------
     # 로그: DEBUG | INFO | WARNING | ERROR
@@ -123,7 +131,7 @@ class Settings(BaseModel):
 
     @property
     def prompts_dir(self) -> Path:
-        """PROMPT_VERSION 환경변수가 있으면 버전 디렉토리 사용 (예: config/prompts/v4.0)."""
+        """PROMPT_VERSION 환경변수가 있으면 해당 이름의 프롬프트 디렉토리 사용 (예: config/prompts/)."""
         base = self.base_dir / "config" / "prompts"
         v = (self.prompt_version or "").strip()
         if v:

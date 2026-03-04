@@ -1,7 +1,7 @@
 # Proposal Agent — 소스코드 전체 분석 문서
 
 > 작성일: 2026-03-04
-> 버전: **v4.0** (Impact-8 Framework + RFP Chunking + Quality Scoring + Cross-Phase Context)
+> Impact-8 Framework + RFP Chunking + Quality Scoring + Cross-Phase Context
 
 ---
 
@@ -27,7 +27,7 @@
 18. [슬라이드 유형 분류 체계](#18-슬라이드-유형-분류-체계)
 19. [디자인 시스템](#19-디자인-시스템)
 20. [테스트 구조](#20-테스트-구조)
-21. [v4.0 핵심 설계 패턴](#21-v40-핵심-설계-패턴)
+21. [핵심 설계 패턴](#21-핵심-설계-패턴)
 
 ---
 
@@ -64,12 +64,12 @@
 ```
 proposal-agent/
 │
-├── main.py                         # CLI 진입점 (typer 앱, v4.0)
+├── main.py                         # CLI 진입점 (typer 앱)
 ├── requirements.txt                # 패키지 의존성
-├── .env.example                    # 환경변수 예시 (v4.0 고도화 옵션 포함)
+├── .env.example                    # 환경변수 예시 (고도화 옵션 포함)
 ├── .env                            # 실제 환경변수 (git 제외)
 ├── project.md                      # 본 문서
-├── advance.md                      # v4.0 고도화 설계 문서
+├── advance.md                      # 고도화 설계 문서
 │
 ├── config/                         # 설정 모듈
 │   ├── settings.py                 # 앱 전역 설정 (Pydantic BaseModel, 싱글톤)
@@ -87,19 +87,19 @@ proposal-agent/
 │   │   ├── docx_parser.py
 │   │   ├── txt_parser.py
 │   │   ├── pptx_parser.py
-│   │   └── chunker.py              # RFPChunker (v4.0 신규)
+│   │   └── chunker.py              # RFPChunker
 │   │
 │   ├── agents/                     # LLM 에이전트 레이어
 │   │   ├── base_agent.py           # BaseAgent, _call_llm_and_extract_json, _normalize_json_keys
 │   │   ├── rfp_analyzer.py         # RFPAnalyzer (RFP Chunking 연동)
-│   │   └── content_generator.py    # ContentGenerator (v4.0 - Cross-Phase, Stats, Scoring)
+│   │   └── content_generator.py    # ContentGenerator (Cross-Phase, Stats, Scoring)
 │   │
-│   ├── data/                       # 데이터 레이어 (v4.0 신규)
+│   ├── data/                       # 데이터 레이어
 │   │   ├── __init__.py
 │   │   ├── industry_stats.py       # 업종별 통계 DB
 │   │   └── company_profiler.py     # 회사 프로필 대화형 설정
 │   │
-│   ├── quality/                    # 품질 검증 레이어 (v4.0 신규)
+│   ├── quality/                    # 품질 검증 레이어
 │   │   ├── __init__.py
 │   │   └── slide_scorer.py         # SlideQualityScorer (규칙 기반)
 │   │
@@ -108,7 +108,7 @@ proposal-agent/
 │   │   └── rfp_schema.py           # RFPAnalysis
 │   │
 │   ├── generators/                 # PPTX 생성 레이어
-│   │   ├── template_manager.py     # TemplateManager (폰트 폴백 v4.0)
+│   │   ├── template_manager.py     # TemplateManager (폰트 폴백)
 │   │   ├── pptx_generator.py       # PPTXGenerator (슬라이드 생성)
 │   │   ├── chart_generator.py      # ChartGenerator (차트·타임라인·조직도)
 │   │   └── diagram_generator.py    # DiagramGenerator (프로세스 플로우)
@@ -218,7 +218,7 @@ proposal-agent/
 |------|------|
 | `generate` | RFP → PPTX 전체 파이프라인 |
 | `analyze` | RFP 분석만 수행 |
-| `setup-company` | 회사 프로필 대화형 설정 (v4.0 신규) |
+| `setup-company` | 회사 프로필 대화형 설정 |
 | `types` | 제안서 유형 목록 |
 | `templates` | PPTX 템플릿 목록 |
 | `info` | Impact-8 Framework 설명 |
@@ -284,9 +284,9 @@ proposal-agent/
 
 RFP 문서를 전략적으로 분석해 `RFPAnalysis` 반환.
 
-**v4.0 변경사항:**
+**주요 변경사항:**
 - `RFPChunker` 연동: `ENABLE_RFP_CHUNKING=true`이고 RFP가 10,000자 이상이면 섹션 우선순위 청킹 적용
-- 기존: `_truncate_text(raw_text, 25000)` → v4.0: `chunker.build_analysis_context(raw_text, tables, max_chars=40000)`
+- 기존: `_truncate_text(raw_text, 25000)` → `chunker.build_analysis_context(raw_text, tables, max_chars=40000)`
 
 **분석 결과 (`RFPAnalysis`):**
 - `project_name`, `client_name`, `project_overview`, `project_type`
@@ -301,11 +301,11 @@ RFP 문서를 전략적으로 분석해 `RFPAnalysis` 반환.
 
 ---
 
-### src/agents/content_generator.py — ContentGenerator (v4.0)
+### src/agents/content_generator.py — ContentGenerator
 
 Phase 0~7 제안서 콘텐츠를 생성해 `ProposalContent` 반환.
 
-**v4.0 주요 변경사항:**
+**주요 변경사항:**
 
 1. **Cross-Phase Context**: `cross_phase_summaries` 리스트에 이전 Phase 결론을 축적. `_extract_phase_summary(phase)` → 핵심 결론 추출 → 다음 Phase 프롬프트에 `_build_cross_phase_context()` 섹션으로 주입.
 
@@ -335,7 +335,7 @@ Phase 0~7 제안서 콘텐츠를 생성해 `ProposalContent` 반환.
 
 반환 형식: `{"raw_text": str, "tables": [{"headers": [...], "rows": [[...]]}], "sections": [...]}`
 
-### src/parsers/chunker.py — RFPChunker (v4.0 신규)
+### src/parsers/chunker.py — RFPChunker
 
 한국어 공공문서 RFP를 섹션 우선순위 기반으로 청킹.
 
@@ -357,7 +357,7 @@ Phase 0~7 제안서 콘텐츠를 생성해 `ProposalContent` 반환.
 
 ## 9. 데이터 레이어
 
-### src/data/industry_stats.py (v4.0 신규)
+### src/data/industry_stats.py
 
 **`INDUSTRY_STATS`**: 업종(`marketing_pr`, `it_system`, `event`, `public`, `consulting`)별 검증 통계 딕셔너리.
 
@@ -368,7 +368,7 @@ Phase 0~7 제안서 콘텐츠를 생성해 `ProposalContent` 반환.
 - Phase에 맞는 카테고리의 통계를 `max_items`개 선택하여 개행 구분 문자열 반환
 - 반환값은 content_generator의 프롬프트 stats_section에 직접 삽입
 
-### src/data/company_profiler.py (v4.0 신규)
+### src/data/company_profiler.py
 
 **`run_interactive_setup(output_path=None) → Path`**:
 - 기존 `company_data/company_profile.json`이 있으면 로드하여 기본값 제공 (업데이트 모드)
@@ -381,7 +381,7 @@ Phase 0~7 제안서 콘텐츠를 생성해 `ProposalContent` 반환.
 
 ## 10. 품질 레이어
 
-### src/quality/slide_scorer.py (v4.0 신규)
+### src/quality/slide_scorer.py
 
 **`SlideQualityScorer`**: LLM 없이 규칙 기반으로 슬라이드 품질 채점.
 
@@ -462,9 +462,9 @@ ProposalContent → PPTX 렌더링 파이프라인.
 
 ## 13. PPTX 생성 레이어
 
-### src/generators/template_manager.py — TemplateManager (v4.0 폰트 폴백)
+### src/generators/template_manager.py — TemplateManager (폰트 폴백)
 
-**v4.0 신규: `_FONT_FALLBACK_MAP`**
+**`_FONT_FALLBACK_MAP`**
 ```python
 {
     "Pretendard": "맑은 고딕",
@@ -476,7 +476,7 @@ ProposalContent → PPTX 렌더링 파이프라인.
 }
 ```
 
-**v4.0 신규: `_safe_font_name(font_name) → str`**
+**`_safe_font_name(font_name) → str`**
 1. `_SAFE_SYSTEM_FONTS`에 있으면 그대로 반환
 2. `_FONT_FALLBACK_MAP`에 있으면 대체 폰트 반환
 3. Windows에서 `C:/Windows/Fonts` 스캔으로 존재 여부 확인
@@ -568,7 +568,7 @@ ProposalContent → PPTX 렌더링 파이프라인.
 | `phase6_whyus.txt` | Phase 6: WHY US |
 | `phase7_investment.txt` | Phase 7: INVESTMENT & ROI |
 
-**버전 관리**: `PROMPT_VERSION=v4.1` 설정 시 `config/prompts/v4.1/` 내 파일을 우선 탐색.
+**프롬프트 버전**: `PROMPT_VERSION` 설정 시 `config/prompts/{PROMPT_VERSION}/` 내 파일을 우선 탐색.
 
 ---
 
@@ -696,7 +696,7 @@ pytest tests/ -v
 
 ---
 
-## 21. v4.0 핵심 설계 패턴
+## 21. 핵심 설계 패턴
 
 ### 1. 계층화된 품질 향상
 
@@ -710,7 +710,7 @@ RFP 입력 품질       → RFPChunker (섹션 우선순위 청킹)
 
 ### 2. 환경변수 기반 기능 토글
 
-모든 v4.0 고도화 기능은 `.env` 환경변수로 on/off 가능. 기본값은 모두 사용자에게 유리한 방향(`true`). `ENABLE_SELF_REFINEMENT`만 토큰 비용 고려로 `false` 기본.
+모든 고도화 기능은 `.env` 환경변수로 on/off 가능. 기본값은 모두 사용자에게 유리한 방향(`true`). `ENABLE_SELF_REFINEMENT`만 토큰 비용 고려로 `false` 기본.
 
 ### 3. 싱글톤 Settings
 

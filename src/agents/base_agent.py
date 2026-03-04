@@ -1,4 +1,4 @@
-"""LLM 기반 에이전트 추상 클래스 (Claude / Gemini / Groq 지원)"""
+"""LLM 기반 에이전트 추상 클래스 (Claude / Gemini / Groq / Ollama 지원)"""
 
 import json
 import re
@@ -19,7 +19,7 @@ JSON_PARSE_FAILED_MESSAGE = (
 
 
 class BaseAgent(ABC):
-    """LLM 기반 에이전트 (Claude / Gemini / Groq 중 .env 설정에 따라 선택)"""
+    """LLM 기반 에이전트 (Claude / Gemini / Groq / Ollama 중 .env 설정에 따라 선택)"""
 
     def __init__(
         self,
@@ -31,12 +31,25 @@ class BaseAgent(ABC):
         self.prompts_dir = settings.prompts_dir
         self._prompt_cache: Dict[str, str] = {}
 
-        if self._provider == "claude":
+        if self._provider == "ollama":
+            self._use_claude = False
+            self._use_groq = False
+            self._use_ollama = True
+            from openai import OpenAI
+            self._ollama_client = OpenAI(
+                base_url=settings.ollama_base_url,
+                api_key="ollama",  # Ollama는 무시하지만 필수 파라미터
+            )
+            self._ollama_model = model or settings.ollama_model
+            self.api_key = None
+            self.model = self._ollama_model
+        elif self._provider == "claude":
             if not settings.anthropic_api_key:
                 raise ValueError(
                     "LLM_PROVIDER=claude 인데 ANTHROPIC_API_KEY가 비어 있습니다. "
                     "https://console.anthropic.com 에서 API 키를 발급한 뒤 .env에 ANTHROPIC_API_KEY=... 로 넣어주세요."
                 )
+            self._use_ollama = False
             self._use_claude = True
             self._use_groq = False
             from anthropic import Anthropic
@@ -50,6 +63,7 @@ class BaseAgent(ABC):
                     "LLM_PROVIDER=groq 인데 GROQ_API_KEY가 비어 있습니다. "
                     "https://console.groq.com 에서 무료 API 키를 발급한 뒤 .env에 GROQ_API_KEY=... 로 넣어주세요."
                 )
+            self._use_ollama = False
             self._use_claude = False
             self._use_groq = True
             from groq import Groq
@@ -59,6 +73,7 @@ class BaseAgent(ABC):
             self.model = self._groq_model
         else:
             # gemini (기본)
+            self._use_ollama = False
             self._use_claude = False
             self._use_groq = False
             from google import genai
@@ -100,6 +115,8 @@ class BaseAgent(ABC):
             max_tokens = get_settings().llm_max_tokens_default
         if temperature is None:
             temperature = get_settings().llm_temperature
+        if self._use_ollama:
+            return self._call_ollama(system_prompt, user_message, max_tokens, temperature)
         if self._use_claude:
             return self._call_claude(system_prompt, user_message, max_tokens, temperature)
         if self._use_groq:
@@ -297,6 +314,72 @@ class BaseAgent(ABC):
                 logger.error("Groq API 호출 실패: {}: {}", type(e).__name__, (str(e)[:200] or ""))
                 raise RuntimeError(f"Groq API 호출 실패: {e}") from e
         raise RuntimeError(f"Groq API 호출 실패: {last_error}") from last_error
+
+    def _call_ollama(
+        self,
+        system_prompt: str,
+        user_message: str,
+        max_tokens: int,
+        temperature: float = 0.4,
+    ) -> str:
+        """Ollama(로컬 LLM) API 호출. OpenAI 호환 엔드포인트 사용."""
+        settings = get_settings()
+        max_retries = settings.llm_retry_count
+        base_delay = settings.llm_retry_base_delay_seconds
+        delay_sec = settings.llm_delay_seconds
+        last_error: Optional[Exception] = None
+        for attempt in range(max_retries):
+            t0 = time.perf_counter()
+            logger.debug(
+                "LLM 호출 model={} input_len={}",
+                self._ollama_model,
+                len(user_message),
+            )
+            try:
+                response = self._ollama_client.chat.completions.create(
+                    model=self._ollama_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                result = (response.choices[0].message.content or "").strip()
+                if not result:
+                    raise ValueError("Ollama 응답이 비어 있습니다.")
+                elapsed = time.perf_counter() - t0
+                logger.debug(
+                    "LLM 응답 len={} elapsed={:.2f}s",
+                    len(result),
+                    elapsed,
+                )
+                if delay_sec > 0:
+                    time.sleep(delay_sec)
+                return result
+            except Exception as e:
+                last_error = e
+                err_str = str(e).upper()
+                is_retryable = (
+                    "CONNECTION" in err_str
+                    or "TIMEOUT" in err_str
+                    or "ECONNREFUSED" in err_str
+                    or "429" in err_str
+                )
+                if is_retryable and attempt < max_retries - 1:
+                    wait = base_delay * (2**attempt)
+                    logger.warning(
+                        "Ollama 일시 오류, {}초 후 재시도 ({}/{}): {}",
+                        int(wait),
+                        attempt + 1,
+                        max_retries,
+                        str(e)[:200],
+                    )
+                    time.sleep(wait)
+                    continue
+                logger.error("Ollama API 호출 실패: {}: {}", type(e).__name__, (str(e)[:200] or ""))
+                raise RuntimeError(f"Ollama API 호출 실패: {e}") from e
+        raise RuntimeError(f"Ollama API 호출 실패: {last_error}") from last_error
 
     def _call_gemini(
         self,

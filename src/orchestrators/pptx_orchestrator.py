@@ -1,5 +1,5 @@
 """
-PPTX 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
+PPTX 생성 오케스트레이터 (Impact-8 Framework)
 
 ProposalContent(LLM이 생성한 제안서 콘텐츠)를 받아 Modern 스타일 PPTX 파일로 변환합니다.
 티저(HOOK) → Phase 1~7 슬라이드를 순서대로 추가하고, 슬라이드 유형별로

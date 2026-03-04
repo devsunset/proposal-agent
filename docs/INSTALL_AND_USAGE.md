@@ -1,4 +1,4 @@
-# 설치 및 사용 가이드 (v4.0)
+# 설치 및 사용 가이드
 
 ---
 
@@ -142,7 +142,7 @@ python main.py analyze input/rfp.pdf
 $ python main.py generate input/rfp.pdf -n "디지털 마케팅" -c "A공사"
 
 ┌─────────────────────────────────────────┐
-│  제안서 자동 생성 에이전트 v4.0          │
+│  제안서 자동 생성 에이전트          │
 │  Impact-8 Framework                     │
 └─────────────────────────────────────────┘
 
@@ -187,7 +187,7 @@ output/
 
 ---
 
-## 6. v4.0 신기능 상세
+## 6. 신기능 상세
 
 ### RFP Chunking (긴 RFP 완전 분석)
 - 한국어 공공 문서 헤딩 패턴 인식으로 섹션 분류
@@ -235,10 +235,10 @@ config/prompts/
 
 ```bash
 # .env에 설정
-PROMPT_VERSION=v4.1
+PROMPT_VERSION=my_prompts
 
 # 디렉토리 구조
-config/prompts/v4.1/
+config/prompts/my_prompts/
   ├── phase2_insight.txt
   └── ...
 ```
@@ -296,14 +296,14 @@ WARNING | Phase 3 품질 점수: 45.2점 (기준: 60점 미만)
 ```
 proposal-agent/
 ├── main.py                        # CLI (generate, analyze, setup-company, types, info, templates)
-├── .env.example                   # 환경 변수 예시 (v4.0 고도화 옵션 포함)
+├── .env.example                   # 환경 변수 예시 (고도화 옵션 포함)
 ├── config/
-│   ├── settings.py                # API 키·LLM·v4.0 옵션
+│   ├── settings.py                # API 키·LLM·고도화 옵션
 │   ├── proposal_types.py          # 제안서 유형 6종·가중치
 │   └── prompts/                   # Phase별 프롬프트
 ├── src/
 │   ├── parsers/                   # get_parser_for_path + RFPChunker
-│   ├── agents/                    # base_agent, rfp_analyzer, content_generator (v4.0)
+│   ├── agents/                    # base_agent, rfp_analyzer, content_generator
 │   ├── data/                      # company_profiler, industry_stats
 │   ├── quality/                   # slide_scorer
 │   ├── schemas/                   # proposal_schema, rfp_schema

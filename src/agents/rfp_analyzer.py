@@ -1,4 +1,4 @@
-"""RFP 분석 에이전트 (v4.0 — RFP Chunking 지원)"""
+"""RFP 분석 에이전트 (RFP Chunking 지원)"""
 
 import json
 from typing import Any, Callable, Dict, Optional
@@ -172,7 +172,7 @@ class RFPAnalyzer(BaseAgent):
 ```
 """
 
-        _llm_label = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
+        _llm_label = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini", "ollama": "Ollama"}.get(
             self._provider, self._provider.title()
         )
         if progress_callback:

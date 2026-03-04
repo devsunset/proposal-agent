@@ -1,4 +1,4 @@
-# Proposal Agent — AI 제안서 자동 생성 에이전트 v4.0
+# Proposal Agent — AI 제안서 자동 생성 에이전트
 
 RFP(제안요청서) PDF/DOCX/TXT/PPTX를 입력하면 **Impact-8 구조의 PPTX 제안서**를 자동 생성하는 AI 에이전트 시스템
 
@@ -111,12 +111,12 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator + chart/diagram_generat
 ├── AGENT_GUIDE.md              # 에이전트 가이드
 ├── .env.example                # 환경 변수 예시 (복사 후 .env로 사용)
 ├── config/
-│   ├── settings.py             # API 키·LLM 선택·경로·v4.0 고도화 옵션
+│   ├── settings.py             # API 키·LLM 선택·경로·고도화 옵션
 │   ├── proposal_types.py       # 제안서 유형 6종·가중치
 │   └── prompts/                # Phase별 프롬프트
 ├── src/
 │   ├── parsers/                # PDF, DOCX, TXT, PPTX 파싱 + RFPChunker
-│   ├── agents/                 # base_agent, rfp_analyzer (청킹 연동), content_generator (v4.0)
+│   ├── agents/                 # base_agent, rfp_analyzer (청킹 연동), content_generator
 │   ├── data/                   # company_profiler, industry_stats (업종별 통계 DB)
 │   ├── quality/                # slide_scorer (규칙 기반 슬라이드 품질 채점)
 │   ├── schemas/                # proposal_schema, rfp_schema (Pydantic)
@@ -154,7 +154,7 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator + chart/diagram_generat
 - [에이전트 구축·시스템 구조](docs/입찰제안서_에이전트_가이드.md) — 아키텍처
 - [상세 사용 가이드](docs/제안서_에이전트_사용_가이드.md) — 커스터마이징
 
-## 버전
+## 주요 기능
 
-- **v4.0** (2026-03-04): RFP Chunking, Industry Stats DB, Slide Quality Scorer, Cross-Phase Context, Phase Checkpoint, Negative Prompts, setup-company CLI, 폰트 폴백
-- **v3.0**: Impact-8 Framework, 다중 LLM, TemplateManager + pptx/chart/diagram generator
+- RFP Chunking, Industry Stats DB, Slide Quality Scorer, Cross-Phase Context, Phase Checkpoint, Negative Prompts, setup-company CLI, 폰트 폴백
+- Impact-8 Framework, 다중 LLM, TemplateManager + pptx/chart/diagram generator

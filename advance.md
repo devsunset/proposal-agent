@@ -1,248 +1,31 @@
-# Proposal Agent 고도화 방안 (Advance Plan)
+# Proposal Agent 고도화 방안 (미구현 항목)
 
-> 작성일: 2026-03-04
-> 기준 버전: v3.6 (Impact-8 Framework)
-> **구현 완료: v4.0** (2026-03-04)
-> 목표: 제안서 콘텐츠 품질·시각 품질·생성 속도·안정성 전방위 고도화
-
-## ✅ v4.0 구현 완료 항목
-
-| # | 기능 | 구현 파일 | 상태 |
-|---|------|---------|------|
-| A | RFP Chunking (섹션 우선순위, 40,000자) | `src/parsers/chunker.py` + `rfp_analyzer.py` | ✅ |
-| B | Industry Stats DB (업종별 통계 주입) | `src/data/industry_stats.py` | ✅ |
-| C | Slide Quality Scorer (규칙 기반 자동 채점) | `src/quality/slide_scorer.py` | ✅ |
-| D | Cross-Phase Context (Phase 간 일관성) | `content_generator.py` | ✅ |
-| E | Phase Checkpoint (output/_checkpoints/) | `content_generator.py` | ✅ |
-| F | Negative Prompts (절대 금지 사항) | `content_generator.py` | ✅ |
-| G | Company Profiler (회사 프로필 CLI) | `src/data/company_profiler.py` | ✅ |
-| H | setup-company CLI 명령 | `main.py` | ✅ |
-| I | 폰트 폴백 (Pretendard → 맑은 고딕) | `src/generators/template_manager.py` | ✅ |
-| J | config/settings.py v4.0 환경변수 | `config/settings.py` | ✅ |
-| K | .env.example 고도화 옵션 문서화 | `.env.example` | ✅ |
-| L | PROMPT_VERSION 프로퍼티 기반 버전 관리 | `config/settings.py` | ✅ |
-
-**미구현 (실험적·추후 계획):**
-- Self-Refinement (Draft→Critique→Refine): `ENABLE_SELF_REFINEMENT=false` 기본, 설정 준비 완료
-
----
+> 작성일: 2026-03-04  
+> **구현 완료 항목(RFP Chunking, Industry Stats, Slide Quality Scorer, Cross-Phase Context, Phase Checkpoint, Negative Prompts, Company Profiler, setup-company, 폰트 폴백, PROMPT_VERSION 등)은 제외.**  
+> 이 문서는 **미구현·추후 계획** 항목만 정리합니다.
 
 ---
 
 ## 목차
 
-1. [현재 시스템 문제점 심층 진단](#1-현재-시스템-문제점-심층-진단)
-2. [RFP 파싱 및 분석 혁신](#2-rfp-파싱-및-분석-혁신)
-3. [프롬프트 엔지니어링 혁신](#3-프롬프트-엔지니어링-혁신)
-4. [다단계 생성 파이프라인 (Draft → Critique → Refine)](#4-다단계-생성-파이프라인)
-5. [데이터 보강 전략](#5-데이터-보강-전략)
-6. [콘텐츠 품질 자동 검증 시스템 (QA Agent)](#6-콘텐츠-품질-자동-검증-시스템)
-7. [PPTX 시각 품질 혁신](#7-pptx-시각-품질-혁신)
-8. [LLM 전략 최적화](#8-llm-전략-최적화)
-9. [아키텍처 고도화 (병렬화·캐싱·복구)](#9-아키텍처-고도화)
-10. [제안서 유형별 특화 전략](#10-제안서-유형별-특화-전략)
-11. [출력 다양화 및 후처리](#11-출력-다양화-및-후처리)
-12. [단계별 구현 로드맵](#12-단계별-구현-로드맵)
+1. [RFP 파싱 및 분석 혁신 (미구현)](#1-rfp-파싱-및-분석-혁신-미구현)
+2. [프롬프트 엔지니어링 혁신 (미구현)](#2-프롬프트-엔지니어링-혁신-미구현)
+3. [다단계 생성 파이프라인](#3-다단계-생성-파이프라인)
+4. [데이터 보강 전략 (미구현)](#4-데이터-보강-전략-미구현)
+5. [콘텐츠 품질 자동 검증 (QA Agent)](#5-콘텐츠-품질-자동-검증-시스템)
+6. [PPTX 시각 품질 혁신](#6-pptx-시각-품질-혁신)
+7. [LLM 전략 최적화](#7-llm-전략-최적화)
+8. [아키텍처 고도화](#8-아키텍처-고도화)
+9. [제안서 유형별 특화 전략](#9-제안서-유형별-특화-전략)
+10. [출력 다양화 및 후처리](#10-출력-다양화-및-후처리)
+11. [단계별 구현 로드맵](#12-단계별-구현-로드맵)
+12. [부록: 환경변수 (미구현 기능용)](#부록-환경변수-미구현-기능용)
 
 ---
 
-## 1. 현재 시스템 문제점 심층 진단
+## 1. RFP 파싱 및 분석 혁신 (미구현)
 
-### 1.1 콘텐츠 빈약 문제 — 근본 원인 분석
-
-#### [문제 A] RFP 텍스트 컨텍스트 절단 (Truncation)
-
-```
-현재 코드 (rfp_analyzer.py):
-  raw_text = self._truncate_text(input_data.get("raw_text", ""), 25000)  ← 25,000자 제한
-  tables_json = json.dumps(...)[:5000]  ← 5,000자 제한
-
-현재 코드 (content_generator.py):
-  rfp_analysis.model_dump()[:10000]  ← JSON 직렬화 10,000자 제한
-```
-
-**문제**: 실제 공공 RFP PDF는 50~200페이지 분량으로 100,000자 이상인 경우가 많다. 25,000자 절단 시 후반부 RFP 내용(세부 과업, 평가 기준, 특이 조항 등)이 완전히 누락된다. LLM이 RFP의 1/4만 읽고 제안서를 생성하는 셈이다.
-
-**실측 영향**: 평가 기준 배점(RFP 후반부에 위치) 누락 → Phase 생성 시 배점 정렬 불가 → 제안서 핵심 강조점 어긋남
-
-#### [문제 B] 단일 패스 생성 (One-Shot Generation)
-
-```
-현재 흐름:
-  Phase N 프롬프트 전송 → LLM 1회 응답 → 슬라이드 파싱
-  (실패 시 최대 2회 재시도, 단 내용 개선 없이 동일 프롬프트 반복)
-```
-
-**문제**: LLM은 처음 생성한 콘텐츠의 품질을 스스로 평가·개선할 기회가 없다. 슬라이드 수가 적거나 내용이 빈약해도 통과되며, "최소 3~5개 불릿" 지시를 LLM이 무시해도 검증 로직이 없다.
-
-#### [문제 C] 회사 데이터 부재 → 플레이스홀더 남용
-
-```
-현재 코드 (content_generator.py):
-  company_data = input_data.get("company_data", {})  ← 비어 있으면 {}
-
-JSON 전달: json.dumps(company_data)[:4000]
-  → company_data가 비어 있으면 "{}" 4자만 전달
-```
-
-**문제**: `company_data/company_profile.json` 파일이 없거나 빈 경우(매우 흔함), LLM은 회사 역량·실적에 대한 정보가 전무한 상태로 Phase 6(WHY US)를 생성한다. 결과적으로 "[유사실적 발주처]", "[프로젝트명]" 같은 플레이스홀더가 슬라이드 전체를 가득 채운다.
-
-#### [문제 D] 슬라이드 수 검증 부재
-
-```
-현재 코드:
-  if len(slides) < min_slides:
-      logger.warning("Phase N: min_slides=X but generated Y slides.")
-      → 경고만 출력, 생성 종료 후 부족한 슬라이드로 PPTX 생성
-```
-
-**문제**: marketing_pr 유형의 Phase 4(ACTION PLAN)는 min_slides=30이지만 LLM이 8~12개만 생성해도 경고만 나오고 그대로 PPTX가 만들어진다. 40% 비중의 핵심 섹션이 10% 분량도 안 되는 상황이 발생한다.
-
-#### [문제 E] Win Theme 표면적 주입
-
-```
-현재 코드 (content_generator.py):
-  win_theme_section = f"""
-  ## Win Theme (반드시 반영)
-  {wt_lines}
-  → 이 Phase의 콘텐츠가 위 Win Theme과 연결되도록 작성하세요.
-  """
-```
-
-**문제**: Win Theme이 텍스트 지시로만 주입되며 실제로 각 슬라이드에 반영됐는지 검증하는 로직이 없다. LLM은 Win Theme을 무시하고 일반적인 콘텐츠를 생성할 가능성이 높다. 특히 Groq(소형 모델)에서 이 문제가 심각하다.
-
-#### [문제 F] Phase 간 맥락 단절
-
-```
-현재 흐름:
-  Phase 0 생성 → Phase 1 생성 → Phase 2 생성 → ...
-  (각 Phase는 rfp_analysis만 참조, 이전 Phase 생성 결과를 모름)
-```
-
-**문제**: Phase 2에서 정의한 시장 분석 결론이 Phase 4의 ACTION PLAN에 연결되지 않는다. 각 Phase가 서로 다른 논리와 데이터를 사용해 제안서 전체가 분절된 느낌을 준다. 특히 Win Theme이 Phase별로 다르게 표현되는 불일치가 발생한다.
-
-### 1.2 PPTX 시각 품질 문제
-
-#### [문제 G] 실제 차트 부재
-
-```
-현재 코드 (chart_generator.py):
-  # 차트는 도형(shape)으로 시뮬레이션
-  # python-pptx의 Chart API를 사용하지 않음
-  # 실제 데이터 기반 차트 없음
-```
-
-**문제**: `slide_type: "chart"`를 지정해도 실제 데이터 차트가 생성되지 않고 텍스트박스와 도형으로 차트 모양을 흉내낸다. 발주처가 볼 때 비전문적으로 보인다.
-
-#### [문제 H] 레이아웃 다양성 부족
-
-```
-현재 슬라이드 레이아웃 유형:
-  - content (불릿 리스트)
-  - two_column (2단)
-  - table
-  - key_message
-  → 실제 제안서에서 쓰이는 카드형, 인포그래픽형, 아이콘+텍스트형 등 부재
-```
-
-**문제**: 모든 콘텐츠 슬라이드가 비슷한 레이아웃(제목 + 불릿 리스트)으로 반복된다. 실제 수주 제안서는 섹션마다 다양한 시각화와 레이아웃을 사용해 시선을 끈다.
-
-#### [문제 I] 폰트 의존성 문제
-
-```
-현재 코드:
-  "fonts": {"title": "Pretendard", "body": "Pretendard"}
-```
-
-**문제**: Pretendard는 Windows에 기본 설치되지 않는다. 폰트가 없으면 python-pptx는 시스템 기본 폰트(맑은 고딕 등)로 대체하지만, PPTX를 열면 글자가 깨지거나 레이아웃이 무너진다.
-
-### 1.3 운영 구조 문제
-
-#### [문제 J] 순차 Phase 생성 (성능 병목)
-
-```
-현재: Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7
-각 Phase당 LLM 호출 1~2회 + llm_delay_seconds=8초 대기
-총 소요시간: 8 Phase × (LLM 호출 10~30초 + 8초 대기) = 최소 2~4분
-```
-
-**문제**: Phase 2~5는 서로 의존성이 없어 병렬 실행이 가능함에도 순차 실행한다. Phase 4(가장 오래 걸림)가 완료되기 전까지 Phase 5~7이 대기한다.
-
-#### [문제 K] 실패 시 처음부터 재시작
-
-```
-현재: Phase 5에서 API 호출 실패 → 전체 generate 명령 재실행 필요
-     Phase 0~4에서 생성한 콘텐츠 모두 유실
-```
-
-**문제**: LLM API 오류나 네트워크 문제 발생 시 중간 결과가 저장되지 않아 처음부터 다시 실행해야 한다. 특히 Phase 4(많은 슬라이드)가 완료된 후 Phase 7에서 실패하면 40분 이상의 작업이 날아간다.
-
----
-
-## 2. RFP 파싱 및 분석 혁신
-
-### 2.1 장문 RFP 지능형 분할 처리 (Chunking Strategy)
-
-**현재**: 단순 문자 수 절단 (25,000자)
-**개선**: 의미 단위 분할 + 선택적 요약
-
-#### 구현 방안
-
-```python
-# src/parsers/chunker.py (신규 파일)
-
-class RFPChunker:
-    """
-    장문 RFP를 의미 단위로 분할하고 각 청크를 요약·인덱싱한다.
-
-    전략 1: Section-aware Chunking
-      - RFP의 '제N장', '1.', '가.' 등 헤딩 기반으로 청크 분할
-      - 각 청크: 헤딩 + 본문 (최대 4,000자)
-
-    전략 2: Sliding Window with Overlap
-      - 연속된 청크에 앞 청크 끝 500자를 중첩
-      - 문장 경계 중간에서 자르지 않도록 처리
-
-    전략 3: Priority-based Selection
-      - 평가 기준, 요구사항, 배점, 과업 범위 섹션 → 최우선 포함
-      - 일반 배경 섹션 → LLM 요약 후 압축
-    """
-
-    PRIORITY_KEYWORDS = [
-        "평가 기준", "평가기준", "평가 항목", "배점", "점수", "요구사항",
-        "과업 범위", "과업내용", "수행 내용", "업무 내용", "산출물",
-        "일정", "기간", "예산", "금액", "제출", "자격",
-    ]
-
-    def chunk(self, raw_text: str, max_chars: int = 6000) -> List[Dict]:
-        """
-        Returns:
-            [{"section": "제1장 사업 개요", "text": "...", "priority": "high"/"medium"/"low"}]
-        """
-        sections = self._split_by_headings(raw_text)
-        scored = self._score_sections(sections)
-        selected = self._select_within_budget(scored, max_chars)
-        return selected
-
-    def build_analysis_context(self, raw_text: str, tables: List) -> str:
-        """
-        LLM에 전달할 최적 컨텍스트 구성:
-        1. 고우선순위 섹션 전문 포함
-        2. 중우선순위 섹션은 첫 1,000자만
-        3. 테이블은 구조 유지, 내용 압축
-        4. 총 컨텍스트 40,000자 이내
-        """
-```
-
-#### 핵심 개선 포인트
-
-```
-개선 전: rfp_text[:25000]  → RFP의 앞 25,000자만 전달
-개선 후: chunk_and_select() → 평가 기준·요구사항 등 핵심 섹션 우선 추출 → 최대 40,000자
-         → 모델 컨텍스트 허용 범위(claude: 200K, gemini: 1M)를 충분히 활용
-```
-
-### 2.2 다단계 RFP 분석 (Two-Stage Analysis)
+### 1.1 다단계 RFP 분석 (Two-Stage Analysis)
 
 **현재**: RFP 전체를 1회 LLM 호출로 분석
 **개선**: 1차 구조 분석 → 2차 전략 분석 분리
@@ -267,11 +50,12 @@ class TwoStageRFPAnalyzer(RFPAnalyzer):
 ```
 
 **기대 효과**:
+
 - 구조 추출의 정확도 향상 (낮은 temperature로 할루시네이션 감소)
 - 전략 분석에서 이미 파악된 구조를 바탕으로 더 깊은 인사이트 도출
 - 모델별 특성에 맞게 Stage별 모델 선택 가능 (예: Stage 1은 Groq, Stage 2는 Claude)
 
-### 2.3 평가 기준 자동 매핑 (Requirement Traceability Matrix)
+### 1.2 평가 기준 자동 매핑 (Requirement Traceability Matrix)
 
 ```python
 class RequirementMapper:
@@ -302,7 +86,7 @@ class RequirementMapper:
 
 이 매핑 테이블을 각 Phase 생성 시 user_message에 포함시켜 LLM이 "이 슬라이드에서 반드시 다뤄야 할 것"을 명확히 알게 한다.
 
-### 2.4 RFP 구조 정규화 (Normalization)
+### 1.3 RFP 구조 정규화 (Normalization)
 
 ```python
 # RFP 원문에서 다양한 형식의 평가 기준을 정규화
@@ -421,74 +205,6 @@ Phase 4 ACTION PLAN의 각 슬라이드 유형마다 세부 지시를 명확히 
 - kpis: 최소 3개, 각 KPI에 baseline(현재값)과 target(목표값) 모두 필수
 
 ## 콘텐츠 예시 슬라이드 (content_example) 작성 지침:
-- visual_description: "아름다운 사진" ❌ → "인천 소래포구 노을 배경, 가로 피드 1:1, 브랜드 컬러 오버레이" ✅
-- copy_example: "좋은 콘텐츠" ❌ → 실제 카피 문장 예시 필수
-  예: "✨ 인천의 가을을 함께 달려요! 10월 러닝 크루 모집 중 🏃‍♂️\n📍 소래습지 5km 코스 | 10/12(토) 7:00am\n#인천러닝 #소래포구 #브랜드인천"
-- hashtags: 5~10개, 브랜드 태그 + 트렌드 태그 + 지역 태그 혼합
-```
-
-### 3.4 네거티브 프롬프트 강화 (Negative Instructions)
-
-```
-## ★ 절대 금지 사항 (모든 Phase 공통)
-1. 막연한 표현 금지: "효과적으로", "체계적으로", "전문적으로" → 구체적 수치/방법으로 대체
-2. 플레이스홀더 남용 금지: "[콘텐츠 내용]", "[실적 데이터]" → 실제 내용으로 채우거나 합리적 추정값 사용
-3. 단순 열거 금지: "A, B, C를 진행합니다" → "A를 하면 왜 좋은가, B는 언제 얼마나, C의 기대효과는"
-4. 중복 슬라이드 금지: 동일한 내용을 다른 제목으로 반복하지 말 것
-5. 헤더만 있는 테이블 금지: rows가 0개이거나 빈 칸 가득한 테이블 생성 금지
-
-## ★ Action Title 금지 표현 목록 (엄격 적용)
-다음으로 시작하거나 끝나는 제목은 모두 재작성하세요:
-- "~에 대하여", "~의 현황", "~의 방안", "~의 필요성", "~의 개요", "~의 배경"
-- "~를 통한", "~를 위한" (단독 사용 시)
-- "관련 현황", "추진 계획", "세부 내용"
-```
-
-### 3.5 프롬프트 버전 관리 시스템
-
-```
-config/prompts/
-  v3.6/              ← 현재 버전
-    phase4_action.txt
-  v4.0/              ← 신규 버전 (실험 중)
-    phase4_action.txt
-
-config/settings.py에 추가:
-  prompt_version: str = os.getenv("PROMPT_VERSION", "v3.6")
-
-  @property
-  def prompts_dir(self) -> Path:
-      return self.base_dir / "config" / "prompts" / self.prompt_version
-```
-
-A/B 테스트: 동일 RFP에 두 버전의 프롬프트로 생성 후 비교 평가
-
----
-
-## 4. 다단계 생성 파이프라인
-
-### 4.1 Draft → Critique → Refine 사이클
-
-**현재**: 단일 생성 + 실패 시 재생성 (내용 개선 없이 동일 프롬프트 재전송)
-**개선**: 생성 → LLM이 스스로 비판 → 개선 생성 3단계 사이클
-
-```python
-class SelfRefiningContentGenerator(ContentGenerator):
-    """
-    각 Phase를 Draft → Critique → Refined 3단계로 생성.
-
-    단, 추가 LLM 호출이 발생하므로 토큰 비용과 시간이 늘어남.
-    환경변수 ENABLE_SELF_REFINEMENT=true 시에만 활성화.
-    """
-
-    async def _generate_phase_with_refinement(self, phase_num, ...):
-        # Step 1: Draft 생성
-        draft_slides_data = self._call_llm_and_extract_json(
-            system_prompt, user_message, max_tokens=max_tokens
-        )
-        draft_slides = self._parse_slides(draft_slides_data.get("slides", []))
-
-        # Step 2: Critique (품질 자가 평가)
         critique_prompt = self._build_critique_prompt(draft_slides, phase_num, rfp_analysis)
         critique = self._call_llm(CRITIQUE_SYSTEM, critique_prompt, max_tokens=2048, temperature=0.2)
 
@@ -589,224 +305,8 @@ class ContextualContentGenerator(ContentGenerator):
         }
 
     def _build_cross_phase_context(self, previous_summaries: List[Dict]) -> str:
-        """이전 Phase 요약을 current Phase 프롬프트에 주입"""
-        if not previous_summaries:
-            return ""
-
-        lines = ["## 이전 Phase 핵심 결론 (일관성 유지 필수)"]
-        for s in previous_summaries[-3:]:  # 최근 3개 Phase만
-            lines.append(f"\n### Phase {s['phase_number']}: {s['phase_title']}")
-            for c in s["key_conclusions"]:
-                lines.append(f"  - {c}")
-
-        lines.append("\n→ 위 결론들과 논리적으로 연결되는 내용을 작성하세요.")
-        return "\n".join(lines)
-```
-
----
-
-## 5. 데이터 보강 전략
-
-### 5.1 산업 통계 데이터베이스 (Industry Statistics DB)
-
-**현재**: LLM이 모든 통계를 할루시네이션으로 생성 (예: "SNS 사용률 70%" — 출처 불명)
-**개선**: 검증된 통계 데이터를 DB화하여 프롬프트에 주입
-
-```python
-# src/data/industry_stats.py (신규)
-
-INDUSTRY_STATS = {
-    "marketing_pr": {
-        "sns_general": [
-            {
-                "stat": "인스타그램 릴스 도달률이 피드 대비 1.8배",
-                "source": "Social Insider, 2025",
-                "value": 1.8,
-                "unit": "배",
-            },
-            {
-                "stat": "국내 인스타그램 MAU 2,644만명 (2025년 1분기)",
-                "source": "와이즈앱",
-                "value": 2644,
                 "unit": "만명",
             },
-            {
-                "stat": "Z세대(18-24) SNS 일평균 사용시간 55분",
-                "source": "닐슨 코리아, 2025",
-                "value": 55,
-                "unit": "분/일",
-            },
-            {
-                "stat": "브랜드 콘텐츠 중 숏폼 참여율이 롱폼 대비 2.3배",
-                "source": "HubSpot State of Marketing 2025",
-                "value": 2.3,
-                "unit": "배",
-            },
-        ],
-        "influencer": [
-            {
-                "stat": "마이크로 인플루언서(팔로워 1만~10만) 참여율 평균 3.8%",
-                "source": "Influencer Marketing Hub, 2025",
-                "value": 3.8,
-                "unit": "%",
-            },
-        ],
-        "roi": [
-            {
-                "stat": "인플루언서 마케팅 ROI: 1달러 투자당 평균 6.5달러 수익",
-                "source": "Influencer Marketing Hub Annual Report 2025",
-                "value": 6.5,
-                "unit": "배 ROI",
-            },
-        ],
-    },
-    "it_system": {
-        "digital_transformation": [
-            {
-                "stat": "국내 기업 디지털 전환 투자 전년 대비 23% 증가",
-                "source": "IDC Korea, 2025",
-                "value": 23,
-                "unit": "% 증가",
-            },
-            {
-                "stat": "클라우드 전환 기업 IT 운영 비용 평균 32% 절감",
-                "source": "가트너, 2025",
-                "value": 32,
-                "unit": "% 절감",
-            },
-        ],
-    },
-    "event": {
-        "participation": [
-            {
-                "stat": "오프라인 행사 참가자 중 67%가 SNS 콘텐츠 공유",
-                "source": "Eventbrite Annual Report 2025",
-                "value": 67,
-                "unit": "%",
-            },
-        ],
-    },
-}
-
-def get_relevant_stats(proposal_type: str, phase_num: int, max_items: int = 5) -> str:
-    """유형과 Phase에 맞는 통계 데이터 반환 (프롬프트 주입용)"""
-    stats = INDUSTRY_STATS.get(proposal_type, {})
-    all_items = []
-    for category, items in stats.items():
-        all_items.extend(items)
-
-    selected = all_items[:max_items]
-    if not selected:
-        return ""
-
-    lines = ["## 참고 통계 데이터 (이 수치를 인용하거나 유사 수준의 데이터 활용 가능)"]
-    for item in selected:
-        lines.append(f"  - {item['stat']} (출처: {item['source']})")
-    return "\n".join(lines)
-```
-
-### 5.2 회사 프로필 자동 구조화 시스템
-
-**현재**: `company_data/company_profile.json` 파일을 수동으로 직접 작성해야 함
-**개선**: 회사 웹사이트 URL 입력 → 자동 크롤링 및 구조화
-
-```python
-# src/data/company_profiler.py (신규)
-
-class CompanyProfiler:
-    """
-    회사 정보를 다양한 소스에서 자동 수집·구조화.
-
-    입력 소스:
-    1. 회사 홈페이지 URL → 크롤링 (requests + BeautifulSoup)
-    2. 나라장터 수행 실적 → 공개 API (공공데이터)
-    3. 기존 company_profile.json → 필드 보강
-
-    출력: 표준화된 CompanyProfile 구조
-    """
-
-    PROFILE_TEMPLATE = {
-        "company_name": "",
-        "founded_year": "",
-        "employee_count": "",
-        "representative": "",
-        "main_services": [],        # 주요 서비스/제품
-        "certifications": [],       # 인증/특허 (ISO, 벤처기업 등)
-        "key_clients": [],          # 주요 고객사
-        "past_projects": [          # 유사 수행 실적
-            {
-                "client": "",
-                "project": "",
-                "year": "",
-                "amount": "",
-                "achievement": "",  # 성과 (수치 포함)
-            }
-        ],
-        "team_members": [           # 핵심 인력
-            {
-                "name": "",
-                "role": "",
-                "experience_years": 0,
-                "expertise": [],
-                "certifications": [],
-            }
-        ],
-        "financial": {
-            "annual_revenue": "",
-            "credit_rating": "",
-        },
-        "awards": [],               # 수상 실적
-        "unique_strengths": [],     # 차별화 강점 (3~5개, 수치 기반)
-    }
-
-    def generate_from_answers(self, answers: Dict) -> Dict:
-        """CLI에서 인터랙티브하게 회사 정보 수집"""
-        # python main.py setup-company → 질문형 인터페이스로 profile 생성
-```
-
-#### CLI 명령 추가
-
-```bash
-# 회사 정보 초기화 (최초 1회)
-python main.py setup-company
-
-# 출력: company_data/company_profile.json 자동 생성
-# 질문 예시:
-#   회사명을 입력하세요: 주식회사 예시
-#   주요 서비스 (쉼표로 구분): SNS 운영, 콘텐츠 제작, 브랜드 마케팅
-#   최근 3년 내 유사 프로젝트 수행 실적을 입력하세요 (0개 이상):
-#     [1] 발주처: 인천시청
-#     [1] 프로젝트명: 인천 SNS 채널 운영 용역
-#     [1] 수행연도: 2024
-#     [1] 계약금액: 1.2억
-#     [1] 주요 성과 (수치): 팔로워 +5,000명, 게시물 도달 월 평균 30만
-```
-
-### 5.3 경쟁사 벤치마크 데이터
-
-```python
-# src/data/competitor_benchmark.py (신규)
-
-class CompetitorBenchmark:
-    """
-    업종·유형별 일반적인 경쟁 환경 데이터 제공.
-    실제 경쟁사 데이터 대신 업종 평균/표준으로 비교.
-    """
-
-    BENCHMARKS = {
-        "marketing_pr": {
-            "avg_team_size": "10~30명",
-            "typical_weaknesses": [
-                "데이터 기반 의사결정 미흡",
-                "로컬 특화 네트워크 부재",
-                "크리에이티브와 퍼포먼스의 분리 운영",
-            ],
-            "our_advantage_template": [
-                "{stat}명의 지역 인플루언서 네트워크",
-                "데이터 기반 A/B 테스트 운영 체계",
-                "SNS-오프라인 이벤트 통합 운영 전문성",
-            ],
-        },
     }
 
     def get_comparison_table(self, proposal_type: str) -> Dict:
@@ -896,120 +396,6 @@ class SlideQualityScorer:
 
         # 4. 플레이스홀더 남용 검사
         scores["placeholder_abuse"] = self._check_placeholder_abuse(slide)
-
-        # 5. 슬라이드 유형 적합성
-        scores["type_fitness"] = self._check_type_fitness(slide)
-
-        total = sum(scores.values()) / len(scores) * 100
-        issues = self._identify_issues(slide, scores)
-
-        return SlideScore(total=total, scores=scores, issues=issues)
-
-    def _check_action_title(self, title: str) -> float:
-        """Action Title 준수 여부 (0~1)"""
-        bad_patterns = [
-            r".*에 대하여$", r".*의 현황$", r".*의 방안$",
-            r".*의 필요성$", r".*의 개요$", r"^관련 현황",
-            r"^추진 계획$", r"^세부 내용$",
-        ]
-        for pattern in bad_patterns:
-            if re.match(pattern, title, re.IGNORECASE):
-                return 0.0
-
-        # 숫자 포함 여부 (Action Title의 특징)
-        has_number = bool(re.search(r'\d', title))
-        # 적절한 길이 (15~40자)
-        good_length = 15 <= len(title) <= 40
-
-        return (0.5 + 0.3 * has_number + 0.2 * good_length)
-
-    def _check_content_richness(self, slide: SlideContent) -> float:
-        """내용 풍부성 (불릿 수, 텍스트 길이)"""
-        score = 0.0
-
-        if slide.bullets:
-            bullet_count = len(slide.bullets)
-            score += min(bullet_count / 4, 1.0) * 0.5  # 4개 이상이면 만점
-
-            avg_bullet_len = sum(len(b.text) for b in slide.bullets) / max(bullet_count, 1)
-            score += min(avg_bullet_len / 30, 1.0) * 0.3  # 평균 30자 이상이면 만점
-
-        if slide.table and slide.table.rows:
-            score += min(len(slide.table.rows) / 3, 1.0) * 0.2  # 3행 이상이면 만점
-
-        return min(score, 1.0)
-
-    def _check_specificity(self, slide: SlideContent) -> float:
-        """구체성 (수치/데이터/출처 포함 여부)"""
-        all_text = self._extract_all_text(slide)
-
-        # 숫자 패턴
-        has_numbers = bool(re.search(r'\d+[%명만억원건회]', all_text))
-        # 연도/기간 패턴
-        has_period = bool(re.search(r'\d{4}년|\d+개월|\d+주', all_text))
-        # 출처 패턴
-        has_source = bool(re.search(r'출처|Source|기준|조사|리포트', all_text, re.IGNORECASE))
-
-        return (0.4 * has_numbers + 0.3 * has_period + 0.3 * has_source)
-
-    def _check_placeholder_abuse(self, slide: SlideContent) -> float:
-        """플레이스홀더 남용 검사 (낮을수록 남용)"""
-        all_text = self._extract_all_text(slide)
-
-        # [대괄호] 형태의 플레이스홀더 개수
-        placeholders = re.findall(r'\[([^\]]+)\]', all_text)
-
-        # 필수 플레이스홀더 (회사명 등) 제외
-        ALLOWED_PLACEHOLDERS = {"회사명", "대표이사명", "PM 성명", "담당자명"}
-        excess = sum(1 for p in placeholders if p not in ALLOWED_PLACEHOLDERS)
-
-        # 초과 플레이스홀더 0개 → 1.0, 3개 이상 → 0.0
-        return max(0.0, 1.0 - excess * 0.33)
-
-
-class PhaseQualityReport:
-    """Phase 전체 품질 리포트"""
-
-    def generate(self, phase: PhaseContent, rfp_analysis: RFPAnalysis) -> Dict:
-        scorer = SlideQualityScorer()
-        slide_scores = [scorer.score_slide(s) for s in phase.slides]
-
-        return {
-            "phase_number": phase.phase_number,
-            "total_slides": len(phase.slides),
-            "avg_score": sum(s.total for s in slide_scores) / len(slide_scores),
-            "min_score": min(s.total for s in slide_scores),
-            "low_quality_slides": [
-                {"index": i, "title": phase.slides[i].title, "score": s.total, "issues": s.issues}
-                for i, s in enumerate(slide_scores) if s.total < 60
-            ],
-            "action_title_violations": sum(1 for s in slide_scores if s.scores["action_title"] < 0.5),
-            "placeholder_abuse_count": sum(1 for s in slide_scores if s.scores["placeholder_abuse"] < 0.5),
-        }
-```
-
-### 6.2 LLM 기반 품질 검증 (QA Agent)
-
-```python
-# src/agents/qa_agent.py (신규)
-
-class QAAgent(BaseAgent):
-    """
-    생성된 제안서 전체를 LLM으로 품질 검증하고 개선 포인트를 도출한다.
-
-    검증 항목:
-    1. RFP 요구사항 커버리지 (누락된 요구사항 있는지)
-    2. Win Theme 일관성 (Phase 전체에서 일관되게 등장하는지)
-    3. 수치의 내부 일관성 (Phase 1에서 "30%"라고 했으면 이후 Phase에서도 동일한지)
-    4. 논리적 흐름 (Phase 간 스토리가 연결되는지)
-    5. 경쟁 차별성 (경쟁사와 구체적으로 무엇이 다른지 명확한지)
-    """
-
-    async def execute(self, content: ProposalContent, rfp_analysis: RFPAnalysis) -> QAReport:
-        system_prompt = """
-당신은 수주 제안서 전문 심사관입니다.
-제안서 전체를 검토하여 수주 가능성을 저해하는 문제점을 찾아내세요.
-"""
 
         # 제안서 요약 생성 (토큰 절약)
         proposal_summary = self._summarize_proposal(content)
@@ -1273,76 +659,6 @@ class FontManager:
         except ImportError:
             return set()
 
-    def get_best_font(self, purpose: str = "korean_modern") -> str:
-        if purpose in self._cache:
-            return self._cache[purpose]
-
-        for font in self.FONT_PRIORITY.get(purpose, []):
-            if font in self._available:
-                self._cache[purpose] = font
-                return font
-
-        fallback = "맑은 고딕"
-        self._cache[purpose] = fallback
-        logger.warning("선호 폰트 없음, '{}' 사용", fallback)
-        return fallback
-
-    def auto_install_pretendard(self) -> bool:
-        """
-        Pretendard 폰트가 없으면 자동 다운로드 및 설치 시도.
-        (GitHub releases에서 다운로드)
-        """
-        if "Pretendard" in self._available:
-            return True
-
-        import urllib.request
-        import zipfile
-
-        url = "https://github.com/orioncactus/pretendard/releases/latest/download/Pretendard.zip"
-        try:
-            # fonts/ 디렉토리에 저장
-            fonts_dir = Path("fonts")
-            fonts_dir.mkdir(exist_ok=True)
-
-            urllib.request.urlretrieve(url, fonts_dir / "Pretendard.zip")
-            with zipfile.ZipFile(fonts_dir / "Pretendard.zip") as z:
-                z.extractall(fonts_dir)
-
-            logger.info("Pretendard 폰트 설치 완료")
-            return True
-        except Exception as e:
-            logger.warning("Pretendard 자동 설치 실패: {}", e)
-            return False
-```
-
-### 7.4 이미지 플레이스홀더 시스템
-
-```python
-# src/generators/image_placeholder.py (신규)
-
-class ImagePlaceholderGenerator:
-    """
-    실제 이미지 대신 의미있는 플레이스홀더 생성.
-
-    옵션 1: 색상 블록 + 설명 텍스트
-    옵션 2: Unsplash API 연동 (무료 이미지 자동 삽입)
-    옵션 3: 로컬 이미지 라이브러리에서 키워드 매칭
-    """
-
-    def add_placeholder(self, slide, image_description: str, left, top, width, height):
-        """이미지 설명 텍스트를 표시하는 플레이스홀더 박스 추가"""
-
-        # 배경 박스
-        box = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, left, top, width, height
-        )
-        box.fill.solid()
-        box.fill.fore_color.rgb = RGBColor(230, 230, 230)
-        box.line.color.rgb = RGBColor(180, 180, 180)
-
-        # 설명 텍스트
-        tf = box.text_frame
-        tf.text = f"📷 {image_description}"
         tf.paragraphs[0].font.size = Pt(12)
         tf.paragraphs[0].font.color.rgb = RGBColor(120, 120, 120)
         tf.paragraphs[0].alignment = PP_ALIGN.CENTER
@@ -1658,7 +974,7 @@ class RFPAnalysisCache:
         except Exception:
             return None
 
-    def save(self, rfp_path: Path, analysis: RFPAnalysis):
+    def save(self, rfp_path: Path, analysis: RFSelf-RefinementSelf-RefinementPAnalysis):
         self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
         key = self.get_cache_key(rfp_path)
         cache_file = self.CACHE_DIR / f"{key}.json"
@@ -1876,93 +1192,82 @@ class QAPredictor(BaseAgent):
 
 ## 12. 단계별 구현 로드맵
 
-### Phase 1 (단기: 2~3주) — 즉시 적용 가능, 코드 변경 최소
+> 아래 표는 **미구현** 항목만 나열합니다. (이미 완료된 RFP Chunking, Industry Stats, Negative Prompts, 폰트 폴백, setup-company, Slide Quality Scorer, Cross-Phase Context, Phase Checkpoint 등은 제외.)
+
+### Phase 1 (단기) — 미구현
 
 | 항목 | 기대 효과 | 구현 난이도 |
-|------|----------|-----------|
-| **RFP Chunking** — 의미 단위 분할로 25,000자 제한 해소 | 내용 완성도 +40% | 낮음 |
-| **산업 통계 DB 주입** — 프롬프트에 검증된 통계 데이터 삽입 | 구체성 +30%, 할루시네이션 감소 | 낮음 |
+|------|-----------|-------------|
 | **Few-shot 예시 추가** — Phase별 황금 예시 슬라이드 프롬프트 주입 | 슬라이드 품질 +25% | 낮음 |
-| **네거티브 프롬프트 강화** — 금지 표현 목록 명시 | Action Title 준수율 +50% | 낮음 |
-| **폰트 의존성 해소** — FontManager로 graceful fallback | PPTX 깨짐 방지 | 낮음 |
-| **플레이스홀더 남용 경고** — QA 스코어링으로 감지 | 완성도 인식 개선 | 낮음 |
-| **setup-company CLI** — 회사 프로필 대화형 생성 | Phase 6 품질 +80% | 중간 |
 
-### Phase 2 (중기: 4~6주) — 콘텐츠 생성 파이프라인 혁신
+### Phase 2 (중기) — 미구현
 
 | 항목 | 기대 효과 | 구현 난이도 |
-|------|----------|-----------|
+|------|-----------|-------------|
 | **계층적 생성 (Phase 4)** — 아웃라인 → 섹션별 세부 생성 | ACTION PLAN 분량 2배 | 중간 |
-| **Cross-Phase Context** — 이전 Phase 결론을 다음 Phase에 전달 | 전체 내러티브 일관성 | 중간 |
 | **Self-Refinement** — Draft → Critique → Refine 사이클 | 내용 품질 +30% | 높음 |
-| **슬라이드 품질 스코어링** — 규칙 기반 자동 채점 | 품질 가시성 확보 | 중간 |
 | **Action Title 자동 수정** — 위반 제목 재생성 | Title 준수율 100% | 중간 |
-| **체크포인트 저장** — 중간 Phase 결과 보존 | API 실패 시 재시작 불필요 | 중간 |
 | **실제 차트 생성** — python-pptx Chart API 사용 | 시각적 품질 대폭 향상 | 높음 |
+
 
 ### Phase 3 (장기: 7~12주) — 시스템 전면 고도화
 
-| 항목 | 기대 효과 | 구현 난이도 |
-|------|----------|-----------|
-| **병렬 Phase 생성** — 의존성 없는 Phase 동시 실행 | 생성 시간 50% 단축 | 높음 |
-| **Two-Stage RFP 분석** — 구조 추출 + 전략 분석 분리 | 분석 정확도 +40% | 높음 |
-| **포트폴리오 라이브러리** — 과거 사례 DB + 자동 검색 | Phase 6 실적 증빙 자동화 | 높음 |
-| **인포그래픽 레이아웃 엔진** — 내용별 최적 레이아웃 자동 선택 | 시각적 다양성 확보 | 매우 높음 |
-| **QA Agent** — LLM 기반 제안서 전체 품질 검증 | 누락 요구사항 발견 | 높음 |
-| **LLM Smart Routing** — Phase별 최적 모델 자동 선택 | 비용 최적화 + 품질 향상 | 높음 |
-| **PDF 변환 지원** — 제안서 최종 제출 형식 자동 변환 | 실용성 향상 | 중간 |
-| **Q&A 예상 질문 생성** — 발표 대비 예상 Q&A | 발표 성공률 향상 | 중간 |
+
+| 항목                                         | 기대 효과             | 구현 난이도 |
+| ------------------------------------------ | ----------------- | ------ |
+| **병렬 Phase 생성** — 의존성 없는 Phase 동시 실행       | 생성 시간 50% 단축      | 높음     |
+| **Two-Stage RFP 분석** — 구조 추출 + 전략 분석 분리    | 분석 정확도 +40%       | 높음     |
+| **포트폴리오 라이브러리** — 과거 사례 DB + 자동 검색         | Phase 6 실적 증빙 자동화 | 높음     |
+| **인포그래픽 레이아웃 엔진** — 내용별 최적 레이아웃 자동 선택      | 시각적 다양성 확보        | 매우 높음  |
+| **QA Agent** — LLM 기반 제안서 전체 품질 검증         | 누락 요구사항 발견        | 높음     |
+| **LLM Smart Routing** — Phase별 최적 모델 자동 선택 | 비용 최적화 + 품질 향상    | 높음     |
+| **PDF 변환 지원** — 제안서 최종 제출 형식 자동 변환         | 실용성 향상            | 중간     |
+| **Q&A 예상 질문 생성** — 발표 대비 예상 Q&A            | 발표 성공률 향상         | 중간     |
+
 
 ---
 
 ## 부록: 품질 목표 지표 (KPI)
 
-| 지표 | 현재 | Phase 1 목표 | Phase 2 목표 | Phase 3 목표 |
-|------|------|-------------|-------------|-------------|
-| Phase 4 평균 슬라이드 수 (marketing_pr) | 8~12개 | 15~20개 | 25~35개 | 30~55개 |
-| Action Title 준수율 | ~40% | ~70% | ~90% | ~95% |
-| 슬라이드당 평균 불릿 수 | 2~3개 | 4개 | 5개 이상 | 5개 이상 |
-| 플레이스홀더 과다 슬라이드 비율 | ~30% | ~15% | ~5% | ~2% |
-| 구체적 수치 포함 슬라이드 비율 | ~20% | ~50% | ~70% | ~80% |
-| 전체 생성 시간 (marketing_pr, gemini) | ~4분 | ~4분 | ~3분 | ~2분 |
-| RFP 요구사항 커버리지 | 미측정 | 60%+ | 80%+ | 90%+ |
-| Win Theme 일관성 점수 | 미측정 | 측정 시작 | 70점+ | 85점+ |
+
+| 지표                               | 현재    | Phase 1 목표 | Phase 2 목표 | Phase 3 목표 |
+| -------------------------------- | ----- | ---------- | ---------- | ---------- |
+| Phase 4 평균 슬라이드 수 (marketing_pr) | 8~12개 | 15~20개     | 25~35개     | 30~55개     |
+| Action Title 준수율                 | ~40%  | ~70%       | ~90%       | ~95%       |
+| 슬라이드당 평균 불릿 수                    | 2~3개  | 4개         | 5개 이상      | 5개 이상      |
+| 플레이스홀더 과다 슬라이드 비율                | ~30%  | ~15%       | ~5%        | ~2%        |
+| 구체적 수치 포함 슬라이드 비율                | ~20%  | ~50%       | ~70%       | ~80%       |
+| 전체 생성 시간 (marketing_pr, gemini)  | ~4분   | ~4분        | ~3분        | ~2분        |
+| RFP 요구사항 커버리지                    | 미측정   | 60%+       | 80%+       | 90%+       |
+| Win Theme 일관성 점수                 | 미측정   | 측정 시작      | 70점+       | 85점+       |
+
 
 ---
 
-## 부록: 환경변수 추가 목록 (v4.0)
+## 부록: 환경변수 (미구현 기능용)
+
+> 아래는 **미구현** 기능 활성화 시 사용할 환경변수 예시입니다.  
+> (이미 구현된 ENABLE_CHECKPOINT, ENABLE_RFP_CHUNKING, ENABLE_QUALITY_SCORING, PROMPT_VERSION 등은 .env.example 참고.)
 
 ```env
-# 고도화 기능 활성화 옵션
+# 미구현 기능 (구현 시 활성화)
 ENABLE_SELF_REFINEMENT=false         # Draft→Critique→Refine 사이클 (토큰 비용 3배)
 ENABLE_PARALLEL_GENERATION=false     # Phase 병렬 생성 (Groq 미지원)
-ENABLE_RFP_CACHE=true               # RFP 분석 결과 캐시 (24시간)
-ENABLE_CHECKPOINT=true              # Phase별 체크포인트 저장
-ENABLE_QA_AGENT=false               # QA Agent 실행 (추가 LLM 호출)
-ENABLE_AUTO_FIX=false               # Action Title 자동 수정
+ENABLE_RFP_CACHE=true                # RFP 분석 결과 캐시 (24시간)
+ENABLE_QA_AGENT=false                # QA Agent 실행 (추가 LLM 호출)
+ENABLE_AUTO_FIX=false                # Action Title 자동 수정
 
-# LLM 스마트 라우팅
-ENABLE_LLM_ROUTING=false            # Phase별 최적 LLM 선택
-SECONDARY_LLM_PROVIDER=gemini       # 라우팅 시 보조 LLM
+# LLM 스마트 라우팅 (미구현)
+ENABLE_LLM_ROUTING=false
+SECONDARY_LLM_PROVIDER=gemini
 
-# 데이터 보강
-UNSPLASH_ACCESS_KEY=                # 이미지 자동 삽입 (Unsplash API)
-INDUSTRY_STATS_PATH=                # 커스텀 통계 DB JSON 경로
-
-# 출력 옵션
-EXPORT_PDF=false                    # PPTX → PDF 자동 변환
-EXPORT_EXEC_SUMMARY=false           # Executive Summary 별도 문서 생성
-EXPORT_QA_SHEET=false               # Q&A 예상 질문 DOCX 생성
-
-# 프롬프트 버전
-PROMPT_VERSION=v3.6                 # 프롬프트 버전 디렉토리
-
-# 품질 기준
-MIN_QUALITY_SCORE=60                # 이 점수 미만이면 재생성 시도 (0~100)
-MIN_SLIDE_QUALITY_SCORE=40          # 슬라이드별 최저 품질 점수
+# 데이터·출력 (미구현)
+UNSPLASH_ACCESS_KEY=                 # 이미지 자동 삽입 (Unsplash API)
+EXPORT_PDF=false                     # PPTX → PDF 자동 변환
+EXPORT_EXEC_SUMMARY=false            # Executive Summary 별도 문서 생성
+EXPORT_QA_SHEET=false                # Q&A 예상 질문 DOCX 생성
 ```
 
 ---
 
-*이 문서는 현재 v3.6 소스코드 심층 분석을 바탕으로 작성된 고도화 방안입니다.*
-*각 방안은 독립적으로 구현 가능하며, Phase 1부터 순차 적용을 권장합니다.*
+*이 문서는 미구현·추후 고도화 항목만 담고 있습니다. 구현된 항목은 제외되었습니다.*

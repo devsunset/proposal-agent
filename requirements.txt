@@ -9,10 +9,11 @@ python-docx>=1.1.0
 # PPTX Generation
 python-pptx>=0.6.23
 
-# AI/LLM (.env LLM_PROVIDER: claude | gemini | groq 중 1개 선택)
+# AI/LLM (.env LLM_PROVIDER: claude | gemini | groq | ollama 중 1개 선택)
 anthropic>=0.39.0
 google-genai>=1.0.0
 groq>=0.4.0
+openai>=1.0.0
 
 # Data Validation
 pydantic>=2.5.0

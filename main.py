@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-제안서 자동 생성 에이전트 (v4.0 - Impact-8 Framework)
+제안서 자동 생성 에이전트 (Impact-8 Framework)
 
 RFP 문서(PDF/DOCX/TXT/PPTX)를 입력받아 Impact-8 구조의 PPTX 제안서를 자동 생성합니다.
 실제 수주 성공 제안서 분석을 기반으로 Phase 구성·비중이 설계되어 있습니다.
@@ -59,7 +59,7 @@ def _default_template_for_proposal_type(proposal_type_value: str) -> str:
 
 app = typer.Typer(
     name="proposal-agent",
-    help="제안서 자동 생성 에이전트 (v4.0 - Impact-8 Framework)",
+    help="제안서 자동 생성 에이전트 (Impact-8 Framework)",
     add_completion=False,
 )
 console = Console()
@@ -125,10 +125,12 @@ def generate(
     예시:
         python main.py generate input/rfp.pdf -n "[프로젝트명]" -c "[발주처명]" -t marketing_pr
     """
-    # API 키 확인 (LLM_PROVIDER에 따라 검사)
+    # API 키 확인 (LLM_PROVIDER에 따라 검사. ollama는 로컬이라 키 불필요)
     _settings = get_settings()
     _p = _settings.llm_provider
-    if _p == "claude":
+    if _p == "ollama":
+        api_key = "ollama"  # BaseAgent에서 무시, 일관된 시그니처용
+    elif _p == "claude":
         api_key = _settings.anthropic_api_key
         key_name = "ANTHROPIC_API_KEY"
         key_hint = "https://console.anthropic.com"
@@ -140,7 +142,7 @@ def generate(
         api_key = _settings.gemini_api_key
         key_name = "GEMINI_API_KEY"
         key_hint = "https://aistudio.google.com/apikey"
-    if not api_key:
+    if _p != "ollama" and not api_key:
         console.print(
             Panel(
                 f"[red]{key_name}가 설정되지 않았습니다.[/red]\n\n"
@@ -159,11 +161,11 @@ def generate(
         raise typer.Exit(1)
 
     # 헤더 출력 (사용 중인 LLM 표시)
-    _llm_label = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(_p, _p)
+    _llm_label = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini", "ollama": "Ollama (로컬)"}.get(_p, _p)
     console.print(
         Panel(
             "[bold cyan]제안서 자동 생성 에이전트[/bold cyan]\n"
-            "[bold]v3.0 - Impact-8 Framework[/bold]\n\n"
+            "[bold]Impact-8 Framework[/bold]\n\n"
             f"[dim]LLM: {_llm_label} (콘텐츠 생성) | [회사명]: Modern 스타일 PPTX[/dim]",
             title="Proposal Agent",
             border_style="green",
@@ -199,7 +201,7 @@ def generate(
     if out[0] == "error":
         err = out[1]
         _s = get_settings()
-        _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
+        _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini", "ollama": "Ollama"}.get(
             _s.llm_provider, _s.llm_provider.title()
         )
         if "429" in str(err) or "할당량" in str(err):
@@ -255,7 +257,7 @@ async def _generate_async_impl(
     """제안서 생성 실제 로직"""
 
     # Step 1: 콘텐츠 생성 (설정된 LLM)
-    _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
+    _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini", "ollama": "Ollama"}.get(
         get_settings().llm_provider, "LLM"
     )
     console.print()
@@ -507,7 +509,9 @@ def analyze(
     """
     _settings = get_settings()
     _p = _settings.llm_provider
-    if _p == "claude":
+    if _p == "ollama":
+        api_key = "ollama"
+    elif _p == "claude":
         api_key = _settings.anthropic_api_key
         key_name = "ANTHROPIC_API_KEY"
     elif _p == "groq":
@@ -516,7 +520,7 @@ def analyze(
     else:
         api_key = _settings.gemini_api_key
         key_name = "GEMINI_API_KEY"
-    if not api_key:
+    if _p != "ollama" and not api_key:
         console.print(f"[red]{key_name}가 설정되지 않았습니다. .env에서 LLM_PROVIDER={_p} 에 맞는 API 키를 설정하세요.[/red]")
         raise typer.Exit(1)
 

@@ -1,5 +1,5 @@
 """
-제안서 콘텐츠 스키마 (v3.0 - Impact-8 Framework)
+제안서 콘텐츠 스키마 (Impact-8 Framework)
 
 LLM이 생성하고 [회사명]가 소비하는 중간 데이터 포맷
 수주 제안서 분석 기반 개선된 구조
@@ -45,7 +45,7 @@ class SlideType(str, Enum):
     CHANNEL_STRATEGY = "channel_strategy"  # 채널별 전략
     CAMPAIGN = "campaign"          # 캠페인 소개
     BUDGET = "budget"              # 예산 테이블
-    # v3.1 추가 슬라이드 유형
+    # 추가 슬라이드 유형
     EXECUTIVE_SUMMARY = "executive_summary"  # Executive Summary
     NEXT_STEP = "next_step"        # Next Step / Call to Action
     DIFFERENTIATION = "differentiation"  # 차별화 포인트
@@ -183,7 +183,7 @@ class CampaignPlan(BaseModel):
 
 
 # ============================================================
-# v3.1 신규 스키마 - Win Theme, Executive Summary, Next Step
+# Win Theme, Executive Summary, Next Step
 # ============================================================
 
 class WinTheme(BaseModel):
@@ -507,7 +507,7 @@ class TeaserContent(BaseModel):
 
 
 class ProposalContent(BaseModel):
-    """제안서 전체 콘텐츠 (v3.1 - Impact-8 Framework + Win Theme)"""
+    """제안서 전체 콘텐츠 (Impact-8 Framework + Win Theme)"""
 
     # 기본 정보
     project_name: str
@@ -523,19 +523,19 @@ class ProposalContent(BaseModel):
     key_differentiators: Optional[List[str]] = None  # 3가지 차별점
     slogan: Optional[str] = None  # 슬로건
 
-    # v3.1 추가: Win Themes (제안서 전체에 반복되는 핵심 메시지)
+    # Win Themes (제안서 전체에 반복되는 핵심 메시지)
     win_themes: Optional[List[WinTheme]] = Field(
         None,
         description="3-4개의 Win Theme (제안서 전체에 반복되는 핵심 수주 전략)"
     )
 
-    # v3.1 추가: Executive Summary (의사결정권자용 요약)
+    # Executive Summary (의사결정권자용 요약)
     executive_summary: Optional[ExecutiveSummary] = Field(
         None,
         description="Executive Summary - 의사결정권자용 1페이지 핵심 요약"
     )
 
-    # v3.1 추가: Next Step (Call to Action)
+    # Next Step (Call to Action)
     next_step: Optional[NextStep] = Field(
         None,
         description="Next Step - 다음 단계 안내 및 Call to Action"

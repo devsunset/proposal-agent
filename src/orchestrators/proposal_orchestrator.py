@@ -1,5 +1,5 @@
 """
-제안서 생성 오케스트레이터 (v3.0 - Impact-8 Framework)
+제안서 생성 오케스트레이터 (Impact-8 Framework)
 
 전체 워크플로우를 조율합니다: RFP 파싱 → 회사 데이터 로드 → RFP 분석(LLM) → 제안서 콘텐츠 생성(LLM).
 LLM은 .env의 LLM_PROVIDER에 따라 Claude/Gemini/Groq 중 하나가 사용됩니다.
@@ -35,7 +35,9 @@ class ProposalOrchestrator:
             self.api_key = api_key
         else:
             p = settings.llm_provider
-            if p == "claude":
+            if p == "ollama":
+                self.api_key = "ollama"
+            elif p == "claude":
                 self.api_key = settings.anthropic_api_key or ""
             elif p == "groq":
                 self.api_key = settings.groq_api_key or ""
@@ -99,7 +101,7 @@ class ProposalOrchestrator:
 
             # Step 3: RFP 분석 (설정된 LLM)
             _settings = get_settings()
-            _llm_label = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini"}.get(
+            _llm_label = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini", "ollama": "Ollama"}.get(
                 _settings.llm_provider, _settings.llm_provider.title()
             )
             if progress_callback:
