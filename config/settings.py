@@ -8,7 +8,7 @@ PPTX 경로 등을 로드하고 검증합니다. Pydantic BaseModel을 사용해
 import os
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class Settings(BaseModel):
@@ -77,7 +77,7 @@ class Settings(BaseModel):
     llm_retry_count: int = int(os.getenv("LLM_RETRY_COUNT", "3") or "3")
     llm_retry_base_delay_seconds: float = float(os.getenv("LLM_RETRY_BASE_DELAY", "5") or "5")
     llm_delay_seconds: float = float(os.getenv("LLM_DELAY_SECONDS", "8") or "8")
-    # JSON 추출 실패 시 재시도 횟수 (1=1회만 호출, 2=실패 시 1회 재시도, …)
+    # LLM JSON 응답 추출 실패 시 재시도 횟수 (1~5). 기대 필드 명시 후 재요청
     llm_json_retry_count: int = int(os.getenv("LLM_JSON_RETRY_COUNT", "2") or "2")
 
     @field_validator("llm_delay_seconds", "llm_retry_base_delay_seconds")
@@ -107,7 +107,7 @@ class Settings(BaseModel):
     @field_validator("llm_json_retry_count")
     @classmethod
     def validate_json_retry_count(cls, v: int) -> int:
-        """LLM_JSON_RETRY_COUNT는 1~5 범위 (JSON 추출 실패 시 재시도 횟수)."""
+        """LLM_JSON_RETRY_COUNT는 1~5 (JSON 응답 추출 실패 시 재시도 횟수)."""
         if v < 1 or v > 5:
             raise ValueError("LLM_JSON_RETRY_COUNT must be between 1 and 5")
         return v
@@ -177,8 +177,7 @@ class Settings(BaseModel):
     # 품질 개선: Action Title 자동 수정 시도
     enable_auto_fix_titles: bool = os.getenv("ENABLE_AUTO_FIX_TITLES", "false").lower() == "true"
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 _settings: Optional[Settings] = None

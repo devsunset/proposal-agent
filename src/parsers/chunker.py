@@ -11,6 +11,7 @@ RFP 청킹 모듈 (RFP Chunker)
 개선 목표: max_chars=40,000자로 확대 + 중요 섹션 우선 포함
 """
 
+import json
 import re
 from typing import Dict, List, Optional
 
@@ -129,7 +130,6 @@ class RFPChunker:
 
         # 4단계: 테이블 (남은 공간에)
         if tables and used_chars < max_chars - 500:
-            import json
             tables_text = "\n\n## 테이블 데이터\n"
             for t in tables[:5]:
                 try:

@@ -11,6 +11,16 @@ from ..utils.logger import get_logger
 
 logger = get_logger("rfp_analyzer")
 
+# RFP 분석 응답에 기대하는 최상위 필드 (요청 시 LLM에 필수 포함 유도)
+RFP_EXPECTED_FIELDS = [
+    "project_name", "client_name", "project_overview", "project_type",
+    "key_requirements", "technical_requirements", "evaluation_criteria",
+    "deliverables", "timeline", "budget",
+    "pain_points", "win_theme_candidates", "evaluation_strategy",
+    "key_success_factors", "potential_risks", "winning_strategy",
+    "differentiation_points", "hidden_needs", "competitive_landscape",
+]
+
 # 모델별 응답 키 통일: camelCase 등 → snake_case (공통 처리)
 RFP_KEY_ALIASES = {
     "projectName": "project_name",
@@ -185,7 +195,7 @@ class RFPAnalyzer(BaseAgent):
                 {"step": 3, "total": 3, "message": "분석 결과 정리 중..."}
             )
 
-        # LLM 호출 + JSON 추출 (실패 시 .env LLM_JSON_RETRY_COUNT 만큼 재시도)
+        # LLM 호출 + JSON 추출 (실패 시 .env LLM_JSON_RETRY_COUNT 만큼 재시도, 기대 필드 명시)
         analysis_data = self._call_llm_and_extract_json(
             system_prompt,
             user_message,
@@ -194,6 +204,7 @@ class RFPAnalyzer(BaseAgent):
                 "[재요청] 위 RFP를 분석한 결과를 반드시 유효한 JSON만 출력하세요. "
                 "마크다운(##, -), 설명 문단 없이 오직 ```json 으로 시작하는 코드 블록 한 개만 출력하세요."
             ),
+            expected_fields=RFP_EXPECTED_FIELDS,
         )
         analysis_data = self._normalize_json_keys(analysis_data, RFP_KEY_ALIASES)
         if not analysis_data:
@@ -255,4 +266,5 @@ class RFPAnalyzer(BaseAgent):
 - 불확실한 정보는 "미확인" 표시
 - 모든 분석에 근거 제시
 
-응답은 반드시 유효한 JSON 형식으로 제공해주세요."""
+## 응답
+- 반드시 유효한 JSON만 출력. 마크다운 없이 ```json 코드 블록 한 개만 출력하세요."""

@@ -8,7 +8,7 @@ LLM이 생성하고 [회사명]가 소비하는 중간 데이터 포맷
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProposalType(str, Enum):
@@ -204,8 +204,8 @@ class WinTheme(BaseModel):
         description="이 Win Theme이 주로 등장하는 Phase 번호"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "데이터 기반 타겟 마케팅",
                 "description": "MZ세대 SNS 이용 패턴 분석을 통한 최적화된 콘텐츠 전략",
@@ -216,6 +216,7 @@ class WinTheme(BaseModel):
                 "related_phases": [1, 2, 3]
             }
         }
+    )
 
 
 class KPIWithBasis(BaseModel):
@@ -235,8 +236,8 @@ class KPIWithBasis(BaseModel):
         None, description="데이터 출처 (예: 와이즈앱, Social Insider 등)"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "metric": "팔로워 성장률",
                 "target": "+30%",
@@ -246,6 +247,7 @@ class KPIWithBasis(BaseModel):
                 "data_source": "유사 프로젝트 평균 성장률 참고"
             }
         }
+    )
 
 
 class ExecutiveSummary(BaseModel):
@@ -274,8 +276,8 @@ class ExecutiveSummary(BaseModel):
         max_length=5
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "project_objective": "10개월간 [프로젝트명] 브랜드 인지도 +20%p 상승, SNS 팔로워 +30% 성장",
                 "win_themes": [
@@ -290,6 +292,7 @@ class ExecutiveSummary(BaseModel):
                 ]
             }
         }
+    )
 
 
 class NextStepItem(BaseModel):
@@ -326,8 +329,8 @@ class NextStep(BaseModel):
         None, description="담당자 연락처"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "headline": "[프로젝트명]과 함께할 준비가 되어 있습니다",
                 "steps": [
@@ -341,6 +344,7 @@ class NextStep(BaseModel):
                 ]
             }
         }
+    )
 
 
 class ActionTitle(BaseModel):
@@ -357,13 +361,14 @@ class ActionTitle(BaseModel):
     topic_title: str = Field(description="기존 주제 제목")
     action_title: str = Field(description="개선된 인사이트 제목")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "topic_title": "타겟 분석",
                 "action_title": "MZ세대 2030이 핵심, 하루 SNS 55분 사용"
             }
         }
+    )
 
 
 # Action Title 변환 가이드라인
@@ -561,8 +566,8 @@ class ProposalContent(BaseModel):
     design_style: Optional[str] = "guide_template"  # 디자인 스타일 프리셋
     design_preferences: Optional[Dict[str, Any]] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "project_name": "[예시] 소셜미디어 채널 운영 프로젝트",
                 "client_name": "[발주처명]",
@@ -577,6 +582,7 @@ class ProposalContent(BaseModel):
                 "slogan": "Positioning as a Leading Mobility Channel",
             }
         }
+    )
 
 
 # Impact-8 Phase 제목 (단일 소스 — main, content_generator, pptx_orchestrator에서 import)

@@ -4,7 +4,6 @@ import json
 import re
 import time
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ..utils.logger import get_logger
@@ -12,9 +11,16 @@ from config.settings import get_settings
 
 logger = get_logger("agent")
 
-# JSON 추출 실패 시 사용자 메시지 (2-4)
+# 구조 추출(JSON 파싱) 실패 시 사용자 메시지 (RFP/티저/Phase 공통)
 JSON_PARSE_FAILED_MESSAGE = (
-    "RFP 분석 결과를 JSON으로 파싱하지 못했습니다. LLM 응답 형식을 확인해 주세요."
+    "LLM 응답에서 구조화 데이터를 추출하지 못했습니다. 응답 형식을 확인해 주세요."
+)
+
+# LLM 호출 시 사용자 메시지 앞에 붙일 JSON 응답 요청 문구 (마크다운 대신 JSON만 받기 위함)
+JSON_RESPONSE_REQUIRED = (
+    "[응답 형식 — 필수] 반드시 유효한 JSON만 출력해 주세요. "
+    "마크다운(##, ###, -, 목록, 설명 문단)을 사용하지 마시고, "
+    "오직 ```json 으로 시작하는 코드 블록 한 개만 출력해 주세요. 블록 안에는 요청한 구조의 JSON만 넣어 주세요."
 )
 
 
@@ -100,13 +106,13 @@ class BaseAgent(ABC):
         temperature: Optional[float] = None,
     ) -> str:
         """
-        LLM API 호출 (Claude / Gemini / Groq)
+        LLM API 호출 (Claude / Gemini / Groq / Ollama).
 
         Args:
             system_prompt: 시스템 프롬프트
             user_message: 사용자 메시지
-            max_tokens: 최대 출력 토큰 수 (None이면 .env LLM_MAX_TOKENS 사용)
-            temperature: 생성 다양성 (None이면 .env LLM_TEMPERATURE, JSON 준수 위해 0.3~0.5 권장)
+            max_tokens: 최대 출력 토큰 (None이면 .env LLM_MAX_TOKENS)
+            temperature: 생성 다양성 (None이면 .env LLM_TEMPERATURE, JSON 응답 안정을 위해 0.3~0.5 권장)
 
         Returns:
             모델 응답 텍스트
@@ -460,20 +466,22 @@ class BaseAgent(ABC):
         temperature: Optional[float] = None,
         max_json_retries: Optional[int] = None,
         retry_hint: Optional[str] = None,
+        expected_fields: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
-        LLM 호출 후 JSON 추출. 추출 실패 시 재시도(동일 프롬프트 + JSON만 출력 유도).
+        LLM 호출 후 JSON 추출. 요청 시 응답 형식(JSON만)·기대 필드 명시, 실패 시 재시도.
 
         Args:
             system_prompt: 시스템 프롬프트
             user_message: 사용자 메시지
             max_tokens: 최대 출력 토큰
             temperature: temperature
-            max_json_retries: JSON 추출 실패 시 최대 재시도 횟수. None이면 .env LLM_JSON_RETRY_COUNT 사용.
-            retry_hint: 재시도 시 user_message 뒤에 붙일 문구 (None이면 기본 문구 사용)
+            max_json_retries: 추출 실패 시 최대 재시도. None이면 .env LLM_JSON_RETRY_COUNT
+            retry_hint: 재시도 시 user_message 뒤에 붙일 문구 (None이면 기본 문구)
+            expected_fields: 응답 JSON에 반드시 포함할 필드(키) 목록. 지정 시 요청 문구에 추가
 
         Returns:
-            추출된 JSON 딕셔너리. 모두 실패 시 빈 dict.
+            추출된 딕셔너리. 실패 시 빈 dict.
         """
         if max_json_retries is None:
             max_json_retries = get_settings().llm_json_retry_count
@@ -485,6 +493,12 @@ class BaseAgent(ABC):
         hint = (retry_hint or default_hint).strip()
         last_response = ""
         _max_log_chars = 2000  # WARNING에 남길 원본 길이 상한
+
+        # 모든 호출에서 JSON만 응답하도록 명시 (마크다운 응답으로 인한 추출 실패 감소)
+        prefix = JSON_RESPONSE_REQUIRED
+        if expected_fields:
+            prefix += "\n\n[필수 포함 필드] 응답 JSON에는 반드시 다음 키를 포함해 주세요: " + ", ".join(expected_fields) + "."
+        user_message = (prefix + "\n\n" + (user_message or "").strip()).strip()
 
         for attempt in range(max_json_retries):
             response = self._call_llm(
@@ -545,13 +559,13 @@ class BaseAgent(ABC):
 
     def _extract_json(self, text: str) -> Dict[str, Any]:
         """
-        텍스트에서 JSON 추출 (LLM 응답 형식 다양성 대응)
+        텍스트에서 구조화 데이터 추출 (```json 블록, 중괄호 블록, **key**: value 폴백).
 
         Args:
-            text: JSON을 포함한 텍스트
+            text: LLM 응답 텍스트 (JSON/마크다운 혼합 가능)
 
         Returns:
-            파싱된 JSON 딕셔너리
+            파싱된 딕셔너리. 추출 실패 시 빈 dict.
         """
         if not (text or "").strip():
             return {}

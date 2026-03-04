@@ -38,7 +38,7 @@ from ..schemas.rfp_schema import RFPAnalysis
 from ..utils.logger import get_logger
 from ..data.industry_stats import get_relevant_stats
 from ..quality.slide_scorer import SlideQualityScorer, PhaseQualityReport
-from config.proposal_types import get_config, get_phase_config, ProposalType as ConfigProposalType
+from config.proposal_types import get_config, ProposalType as ConfigProposalType
 
 logger = get_logger("content_generator")
 
@@ -298,6 +298,8 @@ class ContentGenerator(BaseAgent):
         max_slides = phase_config.max_slides if phase_config else 10
 
         user_message = f"""
+응답은 반드시 유효한 JSON만 출력해 주세요. 마크다운(##, 목록, 설명) 없이 ```json 코드 블록 한 개만 출력해 주세요.
+
 프로젝트명: {project_name}
 발주처: {client_name}
 제안서 유형: {proposal_type.value}
@@ -341,7 +343,10 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 
         max_tokens = get_settings().llm_max_tokens_default
         teaser_data = self._call_llm_and_extract_json(
-            system_prompt, user_message, max_tokens=max_tokens
+            system_prompt,
+            user_message,
+            max_tokens=max_tokens,
+            expected_fields=["main_slogan", "sub_message", "visual_concept", "key_visuals", "slides"],
         )
         teaser_data = self._normalize_json_keys(teaser_data, TEASER_KEY_ALIASES)
 
@@ -370,7 +375,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         win_themes: Optional[List[Dict[str, Any]]] = None,
         cross_phase_summaries: Optional[List[Dict[str, Any]]] = None,
     ) -> tuple:
-        """Phase 콘텐츠 생성 + 원본 JSON 반환 (Win Theme 추출용). JSON 실패 시 1회 재생성."""
+        """Phase 콘텐츠 생성 + 원본 JSON 반환 (Win Theme 추출용). 구조 추출 실패 시 1회 재생성."""
         # content_guidelines를 Phase system 앞에 붙여 품질·형식 준수 유도
         guidelines = self._load_prompt("content_guidelines")
         system_prompt = self._load_prompt(self.PHASE_PROMPTS[phase_num])
@@ -398,19 +403,28 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         else:
             max_tokens = default_tokens
 
-        # LLM 호출 + JSON 추출 (실패 시 .env LLM_JSON_RETRY_COUNT 만큼 재시도)
+        # Phase별 기대 필드: Phase 1은 win_themes + slides, 나머지는 slides
+        phase_expected_fields = ["win_themes", "slides"] if phase_num == 1 else ["slides"]
+
+        # LLM 호출 + 구조 추출 (기대 필드 명시, 실패 시 재시도)
         slides_data = self._call_llm_and_extract_json(
-            system_prompt, user_message, max_tokens=max_tokens
+            system_prompt,
+            user_message,
+            max_tokens=max_tokens,
+            expected_fields=phase_expected_fields,
         )
         slides_data = self._normalize_json_keys(slides_data, PHASE_KEY_ALIASES)
         slides = self._parse_slides(slides_data.get("slides", []))
 
-        # JSON 성공했지만 slides 없음 시 1회 재생성
+        # slides 없음 시 1회 재생성
         retry_count = 0
         if not slides_data or not slides_data.get("slides") or len(slides) == 0:
             logger.warning("Phase {}: slides 없음, 1회 재생성 시도", phase_num)
             slides_data = self._call_llm_and_extract_json(
-                system_prompt, user_message, max_tokens=max_tokens
+                system_prompt,
+                user_message,
+                max_tokens=max_tokens,
+                expected_fields=phase_expected_fields,
             )
             slides_data = self._normalize_json_keys(slides_data or {}, PHASE_KEY_ALIASES)
             slides = self._parse_slides(slides_data.get("slides", []))
@@ -423,7 +437,10 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
                 phase_num, len(slides), min_slides,
             )
             slides_data = self._call_llm_and_extract_json(
-                system_prompt, user_message, max_tokens=max_tokens
+                system_prompt,
+                user_message,
+                max_tokens=max_tokens,
+                expected_fields=phase_expected_fields,
             )
             slides_data = self._normalize_json_keys(slides_data or {}, PHASE_KEY_ALIASES)
             new_slides = self._parse_slides(slides_data.get("slides", []))
@@ -785,8 +802,9 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
         try:
             def to_node(n: Dict) -> OrgChartNode:
                 children = None
-                if n.get("children"):
-                    children = [to_node(c) for c in n["children"] if isinstance(c, dict)]
+                ch = n.get("children")
+                if isinstance(ch, list) and ch:
+                    children = [to_node(c) for c in ch if isinstance(c, dict)]
                 return OrgChartNode(
                     name=n.get("name", ""),
                     role=n.get("role", ""),
@@ -846,18 +864,27 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
                 competitor_comparison = None
                 if slide_data.get("competitor_comparison") or slide_data.get("comparisons"):
                     comparisons = slide_data.get("competitor_comparison") or slide_data.get("comparisons")
+                    if isinstance(comparisons, dict):
+                        comparisons = [comparisons]
+                    elif not isinstance(comparisons, list):
+                        comparisons = []
                     competitor_comparison = [
                         CompetitorComparison(
                             criteria=c.get("criteria", ""),
                             our_strength=c.get("our_strength", ""),
                             competitor=c.get("competitor", ""),
                         )
-                        for c in comparisons
+                        for c in comparisons if isinstance(c, dict)
                     ]
 
                 # Content Examples 파싱 (마케팅/PR용)
                 content_examples = None
                 if slide_data.get("content_examples"):
+                    ce_list = slide_data["content_examples"]
+                    if isinstance(ce_list, dict):
+                        ce_list = [ce_list]
+                    if not isinstance(ce_list, list):
+                        ce_list = []
                     content_examples = [
                         ContentExample(
                             platform=ce.get("platform", ""),
@@ -869,23 +896,26 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
                             hashtags=ce.get("hashtags"),
                             kpi_target=ce.get("kpi_target"),
                         )
-                        for ce in slide_data["content_examples"]
+                        for ce in ce_list if isinstance(ce, dict)
                     ]
 
                 # Campaign 파싱
                 campaign = None
                 if slide_data.get("campaign"):
                     cp = slide_data["campaign"]
-                    campaign = CampaignPlan(
-                        campaign_name=cp.get("campaign_name", ""),
-                        concept=cp.get("concept", ""),
-                        period=cp.get("period", ""),
-                        objectives=cp.get("objectives", []),
-                        target=cp.get("target", ""),
-                        channels=cp.get("channels", []),
-                        key_activities=cp.get("key_activities", []),
-                        expected_results=cp.get("expected_results", []),
-                    )
+                    if isinstance(cp, list) and cp:
+                        cp = cp[0]
+                    if isinstance(cp, dict):
+                        campaign = CampaignPlan(
+                            campaign_name=cp.get("campaign_name", ""),
+                            concept=cp.get("concept", ""),
+                            period=cp.get("period", ""),
+                            objectives=cp.get("objectives", []),
+                            target=cp.get("target", ""),
+                            channels=cp.get("channels", []),
+                            key_activities=cp.get("key_activities", []),
+                            expected_results=cp.get("expected_results", []),
+                        )
 
                 # 차트/타임라인/조직도/테이블 정규화 (LLM이 다른 형식으로 반환하는 경우 대응)
                 chart = self._normalize_chart(slide_data.get("chart"))
