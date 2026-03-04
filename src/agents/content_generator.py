@@ -369,7 +369,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         # JSON 성공했지만 slides 없음 시 1회 재생성
         retry_count = 0
         if not slides_data or not slides_data.get("slides") or len(slides) == 0:
-            logger.warning("Phase %s: slides 없음, 1회 재생성 시도", phase_num)
+            logger.warning("Phase {}: slides 없음, 1회 재생성 시도", phase_num)
             slides_data = self._call_llm_and_extract_json(
                 system_prompt, user_message, max_tokens=max_tokens
             )
@@ -380,7 +380,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         # Self-Refinement: min_slides 미달이면 2차 재생성 1회 (고도화 방안)
         if 0 < len(slides) < min_slides and retry_count < 2:
             logger.warning(
-                "Phase %s: 슬라이드 %s장 < min_slides %s, 2차 재생성 시도",
+                "Phase {}: 슬라이드 {}장 < min_slides {}, 2차 재생성 시도",
                 phase_num, len(slides), min_slides,
             )
             slides_data = self._call_llm_and_extract_json(
@@ -397,7 +397,7 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 
         if len(slides) < min_slides:
             logger.warning(
-                "Phase %s (%s): min_slides=%s but generated %s slides. Consider increasing LLM_MAX_TOKENS or checking prompt.",
+                "Phase {} ({}): min_slides={} but generated {} slides. Consider increasing LLM_MAX_TOKENS or checking prompt.",
                 phase_num, PHASE_TITLES.get(phase_num, ""), min_slides, len(slides),
             )
 
@@ -644,7 +644,7 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
                 show_legend=raw.get("show_legend", True),
             )
         except Exception as e:
-            logger.debug("chart 정규화 실패: %s", e)
+            logger.debug("chart 정규화 실패: {}", e)
             return None
 
     def _normalize_timeline(self, raw: Optional[List]) -> Optional[List[TimelineItem]]:
@@ -666,7 +666,7 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
                     color=item.get("color"),
                 ))
             except Exception as e:
-                logger.debug("timeline 항목 스킵: %s", e)
+                logger.debug("timeline 항목 스킵: {}", e)
         return out if out else None
 
     def _normalize_table(self, raw: Optional[Dict]) -> Optional[Dict]:
@@ -695,7 +695,7 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
                 "style": raw.get("style", "default"),
             }
         except Exception as e:
-            logger.debug("table 정규화 실패: %s", e)
+            logger.debug("table 정규화 실패: {}", e)
             return None
 
     def _normalize_org_chart(self, raw: Optional[Dict]) -> Optional[OrgChartNode]:
@@ -718,7 +718,7 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
                 )
             return to_node(node)
         except Exception as e:
-            logger.debug("org_chart 정규화 실패: %s", e)
+            logger.debug("org_chart 정규화 실패: {}", e)
             return None
 
     def _parse_slides(self, slides_data: List[Dict]) -> List[SlideContent]:
@@ -762,7 +762,7 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
                                     improvement=str(im) if im is not None else None,
                                 ))
                         except Exception as e:
-                            logger.debug("KPI 항목 스킵: %s", e)
+                            logger.debug("KPI 항목 스킵: {}", e)
                             continue
 
                 # Competitor Comparisons 파싱

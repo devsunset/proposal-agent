@@ -167,7 +167,7 @@ class PPTXOrchestrator:
                     self._add_content_slide(slide)
             except (TypeError, AttributeError, ValueError) as e:
                 logger.warning(
-                    "오프닝 슬라이드(%s) 처리 실패(%s), 표지로 대체: %s",
+                    "오프닝 슬라이드({}) 처리 실패({}), 표지로 대체: {}",
                     slide_type,
                     type(e).__name__,
                     str(e)[:200],
@@ -473,7 +473,7 @@ class PPTXOrchestrator:
                 _fallback_content()
         except (TypeError, AttributeError, ValueError) as e:
             logger.warning(
-                "슬라이드 처리 실패 → 콘텐츠로 대체 | type=%s phase=%s title=%s | %s: %s",
+                "슬라이드 처리 실패 → 콘텐츠로 대체 | type={} phase={} title={} | {}: {}",
                 slide_type,
                 phase_number,
                 (slide.title or "")[:50],

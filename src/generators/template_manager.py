@@ -248,11 +248,11 @@ class TemplateManager:
                 "placeholders": placeholders,
             }
             logger.info(
-                "템플릿 레이아웃 추출: 슬라이드 %.2f x %.2f inch, 플레이스홀더 %s",
+                "템플릿 레이아웃 추출: 슬라이드 {:.2f} x {:.2f} inch, 플레이스홀더 {}",
                 sw, sh, list(placeholders.keys()),
             )
         except Exception as e:
-            logger.warning("템플릿 레이아웃 추출 실패: %s", e)
+            logger.warning("템플릿 레이아웃 추출 실패: {}", e)
             self._layout_geometry = None
 
     def get_slide_width_inches(self) -> Optional[float]:
@@ -358,7 +358,7 @@ class TemplateManager:
                 del sld_id_lst[i]
             logger.info("템플릿 기존 슬라이드 제거 완료 (레이아웃/테마만 사용)")
         except Exception as e:
-            logger.warning("템플릿 슬라이드 제거 중 오류: %s", e)
+            logger.warning("템플릿 슬라이드 제거 중 오류: {}", e)
 
     def get_layout_index(self, layout_name: str) -> int:
         """

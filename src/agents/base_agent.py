@@ -122,7 +122,7 @@ class BaseAgent(ABC):
         for attempt in range(max_retries):
             t0 = time.perf_counter()
             logger.debug(
-                "LLM 호출 model=%s input_len=%d",
+                "LLM 호출 model={} input_len={}",
                 self._anthropic_model,
                 len(user_message),
             )
@@ -141,7 +141,7 @@ class BaseAgent(ABC):
                     raise ValueError("Claude 응답 텍스트가 비어 있습니다.")
                 elapsed = time.perf_counter() - t0
                 logger.debug(
-                    "LLM 응답 len=%d elapsed=%.2fs",
+                    "LLM 응답 len={} elapsed={:.2f}s",
                     len(result),
                     elapsed,
                 )
@@ -160,7 +160,7 @@ class BaseAgent(ABC):
                 if is_retryable and attempt < max_retries - 1:
                     wait = base_delay * (2**attempt)
                     logger.warning(
-                        "Claude 일시 오류, %d초 후 재시도 (%d/%d): %s",
+                        "Claude 일시 오류, {}초 후 재시도 ({}/{}): {}",
                         int(wait),
                         attempt + 1,
                         max_retries,
@@ -168,7 +168,7 @@ class BaseAgent(ABC):
                     )
                     time.sleep(wait)
                     continue
-                logger.error("Claude API 호출 실패: %s: %s", type(e).__name__, (str(e)[:200] or ""))
+                logger.error("Claude API 호출 실패: {}: {}", type(e).__name__, (str(e)[:200] or ""))
                 raise RuntimeError(f"Claude API 호출 실패: {e}") from e
         raise RuntimeError(f"Claude API 호출 실패: {last_error}") from last_error
 
@@ -228,7 +228,7 @@ class BaseAgent(ABC):
         max_chars = settings.groq_max_user_message_chars or 0
         if max_chars > 0 and len(user_message) > max_chars:
             user_message = user_message[:max_chars] + "\n\n... (길이 제한으로 일부 생략됨)"
-            logger.debug("Groq user_message %d자로 제한 적용", max_chars)
+            logger.debug("Groq user_message {}자로 제한 적용", max_chars)
         # 413 방지: 요청 전체 토큰 상한 적용 (Groq on_demand 6000 TPM)
         max_req = getattr(settings, "groq_max_request_tokens", 5500) or 5500
         system_prompt, user_message = self._truncate_for_groq_limit(
@@ -236,7 +236,7 @@ class BaseAgent(ABC):
         )
         if max_req < 10000:
             logger.debug(
-                "Groq 요청 크기 제한 적용: max_request_tokens=%d (입력 추정 %d+%d)",
+                "Groq 요청 크기 제한 적용: max_request_tokens={} (입력 추정 {}+{})",
                 max_req,
                 self._estimate_tokens_groq(system_prompt),
                 self._estimate_tokens_groq(user_message),
@@ -248,7 +248,7 @@ class BaseAgent(ABC):
         for attempt in range(max_retries):
             t0 = time.perf_counter()
             logger.debug(
-                "LLM 호출 model=%s input_len=%d",
+                "LLM 호출 model={} input_len={}",
                 self._groq_model,
                 len(user_message),
             )
@@ -267,7 +267,7 @@ class BaseAgent(ABC):
                     raise ValueError("Groq 응답이 비어 있습니다.")
                 elapsed = time.perf_counter() - t0
                 logger.debug(
-                    "LLM 응답 len=%d elapsed=%.2fs",
+                    "LLM 응답 len={} elapsed={:.2f}s",
                     len(result),
                     elapsed,
                 )
@@ -286,7 +286,7 @@ class BaseAgent(ABC):
                 if is_retryable and attempt < max_retries - 1:
                     wait = base_delay * (2**attempt)
                     logger.warning(
-                        "Groq 일시 오류, %d초 후 재시도 (%d/%d): %s",
+                        "Groq 일시 오류, {}초 후 재시도 ({}/{}): {}",
                         int(wait),
                         attempt + 1,
                         max_retries,
@@ -294,7 +294,7 @@ class BaseAgent(ABC):
                     )
                     time.sleep(wait)
                     continue
-                logger.error("Groq API 호출 실패: %s: %s", type(e).__name__, (str(e)[:200] or ""))
+                logger.error("Groq API 호출 실패: {}: {}", type(e).__name__, (str(e)[:200] or ""))
                 raise RuntimeError(f"Groq API 호출 실패: {e}") from e
         raise RuntimeError(f"Groq API 호출 실패: {last_error}") from last_error
 
@@ -313,7 +313,7 @@ class BaseAgent(ABC):
         for attempt in range(max_retries):
             t0 = time.perf_counter()
             logger.debug(
-                "LLM 호출 model=%s input_len=%d",
+                "LLM 호출 model={} input_len={}",
                 self.model,
                 len(user_message),
             )
@@ -334,7 +334,7 @@ class BaseAgent(ABC):
                 result = response.text
                 elapsed = time.perf_counter() - t0
                 logger.debug(
-                    "LLM 응답 len=%d elapsed=%.2fs",
+                    "LLM 응답 len={} elapsed={:.2f}s",
                     len(result),
                     elapsed,
                 )
@@ -353,14 +353,14 @@ class BaseAgent(ABC):
                 if is_quota_error and attempt < max_retries - 1:
                     delay = base_delay * (2**attempt)
                     logger.warning(
-                        "Gemini 할당량/속도 제한. %d초 후 재시도 (%d/%d)",
+                        "Gemini 할당량/속도 제한. {}초 후 재시도 ({}/{})",
                         int(delay),
                         attempt + 1,
                         max_retries,
                     )
                     time.sleep(delay)
                     continue
-                logger.error("Gemini API 호출 실패: %s: %s", type(e).__name__, (str(e)[:200] or ""))
+                logger.error("Gemini API 호출 실패: {}: {}", type(e).__name__, (str(e)[:200] or ""))
                 if is_quota_error:
                     raise RuntimeError(
                         "Gemini API 할당량 초과(429). .env에서 LLM_PROVIDER=groq 또는 LLM_PROVIDER=claude 로 바꾸고 해당 API 키를 설정하면 다른 모델로 전환할 수 있습니다."
@@ -401,6 +401,8 @@ class BaseAgent(ABC):
         )
         hint = (retry_hint or default_hint).strip()
         last_response = ""
+        _max_log_chars = 2000  # WARNING에 남길 원본 길이 상한
+
         for attempt in range(max_json_retries):
             response = self._call_llm(
                 system_prompt=system_prompt,
@@ -412,13 +414,30 @@ class BaseAgent(ABC):
             data = self._extract_json(last_response)
             if data and isinstance(data, dict) and len(data) > 0:
                 return data
+            # JSON 추출 실패 시 원본 응답 로그 (재시도 전/최종 실패 시)
+            if last_response:
+                preview = last_response[: _max_log_chars]
+                if len(last_response) > _max_log_chars:
+                    preview += "\n... (이하 생략, 전체는 DEBUG 로그 참고)"
+                logger.warning(
+                    "JSON 추출 실패 (시도 {}/{}). LLM 원본 응답:\n{}",
+                    attempt + 1,
+                    max_json_retries,
+                    preview,
+                )
+                logger.debug(
+                    "JSON 추출 실패 시 LLM 원본 응답 전체 (len={}):\n{}",
+                    len(last_response),
+                    last_response,
+                )
             if attempt < max_json_retries - 1:
                 logger.warning(
-                    "JSON 추출 실패, %d/%d회 재시도 (JSON만 출력 유도)",
+                    "JSON 추출 실패, {}/{}회 재시도 (JSON만 출력 유도)",
                     attempt + 2,
                     max_json_retries,
                 )
                 user_message = user_message.rstrip() + "\n\n" + hint
+
         return self._extract_json(last_response) if last_response else {}
 
     def _load_prompt(self, prompt_name: str) -> str:

@@ -69,7 +69,7 @@ class PDFParser(BaseParser):
 
             return "\n\n".join(text_parts)
         except Exception as e:
-            logger.error("PDF 텍스트 추출 실패: %s: %s", type(e).__name__, str(e)[:200])
+            logger.error("PDF 텍스트 추출 실패: {}: {}", type(e).__name__, str(e)[:200])
             raise
 
     def extract_tables(self, file_path: Path) -> List[Dict[str, Any]]:
