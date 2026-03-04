@@ -172,6 +172,50 @@ class BaseAgent(ABC):
                 raise RuntimeError(f"Claude API 호출 실패: {e}") from e
         raise RuntimeError(f"Claude API 호출 실패: {last_error}") from last_error
 
+    # Groq 413 방지: 한글은 토큰 수가 많으므로 1토큰 ≈ 2자로 보수적 추정
+    _GROQ_CHARS_PER_TOKEN: int = 2
+
+    def _estimate_tokens_groq(self, text: str) -> int:
+        """Groq 요청 크기 산정용: 한글 혼합 시 1토큰 ≈ 2자로 보수적 추정 (413 방지)."""
+        if not text:
+            return 0
+        return max(1, len(text) // self._GROQ_CHARS_PER_TOKEN)
+
+    def _truncate_for_groq_limit(
+        self,
+        system_prompt: str,
+        user_message: str,
+        max_tokens: int,
+        max_request_tokens: int,
+    ) -> tuple[str, str]:
+        """Groq TPM 한도(413) 방지: 입력 추정 토큰이 상한을 넘으면 user 우선, 부족하면 system까지 자름."""
+        reserve = min(max_tokens, 1024)  # 응답 예약
+        input_limit = max(500, max_request_tokens - reserve)
+        cpt = self._GROQ_CHARS_PER_TOKEN
+        sys_tok = self._estimate_tokens_groq(system_prompt)
+        usr_tok = self._estimate_tokens_groq(user_message)
+        if sys_tok + usr_tok <= input_limit:
+            return system_prompt, user_message
+        # user 먼저 자르기 (추정 비율과 동일하게 자릿수 계산)
+        if usr_tok > input_limit - sys_tok:
+            need_usr_tok = max(0, input_limit - sys_tok)
+            need_usr_chars = need_usr_tok * cpt - 50
+            if need_usr_chars < 100:
+                user_message = user_message[:100] + "\n\n... (Groq 한도로 일부 생략됨)"
+            else:
+                user_message = user_message[:need_usr_chars] + "\n\n... (Groq 한도로 일부 생략됨)"
+            usr_tok = self._estimate_tokens_groq(user_message)
+        if sys_tok + usr_tok <= input_limit:
+            return system_prompt, user_message
+        # system까지 자르기
+        need_sys_tok = max(0, input_limit - usr_tok)
+        need_sys_chars = need_sys_tok * cpt - 30
+        if need_sys_chars < 200:
+            system_prompt = system_prompt[:200] + "\n\n... (생략)"
+        else:
+            system_prompt = system_prompt[:need_sys_chars] + "\n\n... (생략)"
+        return system_prompt, user_message
+
     def _call_groq(
         self,
         system_prompt: str,
@@ -179,12 +223,24 @@ class BaseAgent(ABC):
         max_tokens: int,
         temperature: float = 0.4,
     ) -> str:
-        """Groq API 호출 (413/429 대응: 입력 길이 제한·재시도·로깅)"""
+        """Groq API 호출 (413/429 대응: 요청 토큰 상한·입력 길이 제한·재시도·로깅)"""
         settings = get_settings()
         max_chars = settings.groq_max_user_message_chars or 0
         if max_chars > 0 and len(user_message) > max_chars:
             user_message = user_message[:max_chars] + "\n\n... (길이 제한으로 일부 생략됨)"
             logger.debug("Groq user_message %d자로 제한 적용", max_chars)
+        # 413 방지: 요청 전체 토큰 상한 적용 (Groq on_demand 6000 TPM)
+        max_req = getattr(settings, "groq_max_request_tokens", 5500) or 5500
+        system_prompt, user_message = self._truncate_for_groq_limit(
+            system_prompt, user_message, max_tokens, max_req
+        )
+        if max_req < 10000:
+            logger.debug(
+                "Groq 요청 크기 제한 적용: max_request_tokens=%d (입력 추정 %d+%d)",
+                max_req,
+                self._estimate_tokens_groq(system_prompt),
+                self._estimate_tokens_groq(user_message),
+            )
         max_retries = settings.llm_retry_count
         base_delay = settings.llm_retry_base_delay_seconds
         delay_sec = settings.llm_delay_seconds

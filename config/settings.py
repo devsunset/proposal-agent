@@ -49,10 +49,12 @@ class Settings(BaseModel):
     # -------------------------------------------------------------------------
     # API (Groq, 무료 티어 한도 넉넉함)
     # 413(Request too large) 방지: user 메시지 최대 문자 수. 초과 시 잘라서 전송 (0=제한 없음)
+    # groq_max_request_tokens: 요청 전체(입력+출력) 상한. on_demand 한도 6000 이하로 설정 (기본 5500).
     # -------------------------------------------------------------------------
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
     groq_max_user_message_chars: int = int(os.getenv("GROQ_MAX_USER_MESSAGE_CHARS", "0") or "0")
+    groq_max_request_tokens: int = int(os.getenv("GROQ_MAX_REQUEST_TOKENS", "5000") or "5000")
 
     # -------------------------------------------------------------------------
     # 로그: DEBUG | INFO | WARNING | ERROR
