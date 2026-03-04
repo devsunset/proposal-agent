@@ -146,13 +146,16 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator + chart/diagram_generat
 - **템플릿 지정** (`-T guide_template` 등): 해당 PPTX의 테마(색상·폰트)를 동적 추출해 적용
 - **폰트 폴백**: 템플릿 폰트가 시스템에 없으면 자동으로 맑은 고딕으로 대체 (Pretendard, Noto Sans KR 등)
 
-## 가이드 문서
+## 가이드 문서 (docs/)
 
-- [에이전트 가이드](AGENT_GUIDE.md) — AI/코드 어시스턴트용
-- [실행 가이드](docs/실행_가이드.md) — 설치·설정·실행
-- [설치 및 사용 가이드](docs/INSTALL_AND_USAGE.md) — 단계별 설치·사용법
-- [에이전트 구축·시스템 구조](docs/입찰제안서_에이전트_가이드.md) — 아키텍처
-- [상세 사용 가이드](docs/제안서_에이전트_사용_가이드.md) — 커스터마이징
+| 문서 | 설명 |
+| ---- | ---- |
+| [제안서 에이전트 소개](docs/제안서_에이전트_소개.md) | 개요·핵심 가치·문서 네비게이션 |
+| [설치 및 사용 가이드](docs/INSTALL_AND_USAGE.md) | 설치·설정·실행·트러블슈팅 (단일 통합 가이드) |
+| [에이전트 가이드](docs/AGENT_GUIDE.md) | 시스템·워크플로우·Impact-8·에이전트 규칙 (AI/개발자용) |
+| [Ollama 로컬 LLM](docs/ollama.md) | 로컬 LLM 설치·설정 |
+| [고도화 로드맵](docs/advance.md) | 미구현·추후 계획 |
+| [소스 구조](docs/project.md) | 디렉토리·아키텍처 |
 
 ## 주요 기능
 
