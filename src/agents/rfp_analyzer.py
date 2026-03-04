@@ -161,31 +161,22 @@ class RFPAnalyzer(BaseAgent):
                 {"step": 2, "total": 3, "message": f"{_llm_label} 분석 수행 중..."}
             )
 
-        # LLM API 호출 (.env LLM_MAX_TOKENS로 응답 길이 조절, 기본 8192)
-        response = self._call_llm(
-            system_prompt, user_message, max_tokens=get_settings().llm_max_tokens_default
-        )
-
         if progress_callback:
             progress_callback(
                 {"step": 3, "total": 3, "message": "분석 결과 정리 중..."}
             )
 
-        # JSON 파싱 (실패 시 1회 재시도: 동일 RFP + JSON만 출력 재요청)
-        analysis_data = self._extract_json(response)
-        analysis_data = self._normalize_json_keys(analysis_data, RFP_KEY_ALIASES)
-        if not analysis_data:
-            logger.warning("RFP 분석 1차 응답에서 JSON을 찾지 못함. JSON만 출력하도록 1회 재시도.")
-            retry_user = (
-                user_message.rstrip()
-                + "\n\n[재요청] 위 RFP를 분석한 결과를 반드시 유효한 JSON만 출력하세요. "
+        # LLM 호출 + JSON 추출 (실패 시 .env LLM_JSON_RETRY_COUNT 만큼 재시도)
+        analysis_data = self._call_llm_and_extract_json(
+            system_prompt,
+            user_message,
+            max_tokens=get_settings().llm_max_tokens_default,
+            retry_hint=(
+                "[재요청] 위 RFP를 분석한 결과를 반드시 유효한 JSON만 출력하세요. "
                 "마크다운(##, -), 설명 문단 없이 오직 ```json 으로 시작하는 코드 블록 한 개만 출력하세요."
-            )
-            response = self._call_llm(
-                system_prompt, retry_user, max_tokens=get_settings().llm_max_tokens_default
-            )
-            analysis_data = self._extract_json(response)
-            analysis_data = self._normalize_json_keys(analysis_data, RFP_KEY_ALIASES)
+            ),
+        )
+        analysis_data = self._normalize_json_keys(analysis_data, RFP_KEY_ALIASES)
         if not analysis_data:
             from .base_agent import JSON_PARSE_FAILED_MESSAGE
             raise ValueError(JSON_PARSE_FAILED_MESSAGE)

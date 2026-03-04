@@ -369,6 +369,58 @@ class BaseAgent(ABC):
                     "Gemini API 호출 실패. API 키와 네트워크를 확인하세요."
                 ) from e
 
+    def _call_llm_and_extract_json(
+        self,
+        system_prompt: str,
+        user_message: str,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        max_json_retries: Optional[int] = None,
+        retry_hint: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        LLM 호출 후 JSON 추출. 추출 실패 시 재시도(동일 프롬프트 + JSON만 출력 유도).
+
+        Args:
+            system_prompt: 시스템 프롬프트
+            user_message: 사용자 메시지
+            max_tokens: 최대 출력 토큰
+            temperature: temperature
+            max_json_retries: JSON 추출 실패 시 최대 재시도 횟수. None이면 .env LLM_JSON_RETRY_COUNT 사용.
+            retry_hint: 재시도 시 user_message 뒤에 붙일 문구 (None이면 기본 문구 사용)
+
+        Returns:
+            추출된 JSON 딕셔너리. 모두 실패 시 빈 dict.
+        """
+        if max_json_retries is None:
+            max_json_retries = get_settings().llm_json_retry_count
+        max_json_retries = max(1, max_json_retries)
+        default_hint = (
+            "[재요청] 위 내용에 대해 반드시 유효한 JSON만 출력하세요. "
+            "마크다운·설명 없이 ```json 코드 블록 한 개만 출력하세요."
+        )
+        hint = (retry_hint or default_hint).strip()
+        last_response = ""
+        for attempt in range(max_json_retries):
+            response = self._call_llm(
+                system_prompt=system_prompt,
+                user_message=user_message,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            last_response = response or ""
+            data = self._extract_json(last_response)
+            if data and isinstance(data, dict) and len(data) > 0:
+                return data
+            if attempt < max_json_retries - 1:
+                logger.warning(
+                    "JSON 추출 실패, %d/%d회 재시도 (JSON만 출력 유도)",
+                    attempt + 2,
+                    max_json_retries,
+                )
+                user_message = user_message.rstrip() + "\n\n" + hint
+        return self._extract_json(last_response) if last_response else {}
+
     def _load_prompt(self, prompt_name: str) -> str:
         """
         프롬프트 템플릿 로드 (캐시 사용으로 디스크 I/O 감소)

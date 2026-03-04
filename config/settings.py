@@ -69,6 +69,8 @@ class Settings(BaseModel):
     llm_retry_count: int = int(os.getenv("LLM_RETRY_COUNT", "3") or "3")
     llm_retry_base_delay_seconds: float = float(os.getenv("LLM_RETRY_BASE_DELAY", "5") or "5")
     llm_delay_seconds: float = float(os.getenv("LLM_DELAY_SECONDS", "8") or "8")
+    # JSON 추출 실패 시 재시도 횟수 (1=1회만 호출, 2=실패 시 1회 재시도, …)
+    llm_json_retry_count: int = int(os.getenv("LLM_JSON_RETRY_COUNT", "2") or "2")
 
     @field_validator("llm_delay_seconds", "llm_retry_base_delay_seconds")
     @classmethod
@@ -92,6 +94,14 @@ class Settings(BaseModel):
         """LLM_RETRY_COUNT는 1~10 범위."""
         if v < 1 or v > 10:
             raise ValueError("LLM_RETRY_COUNT must be between 1 and 10")
+        return v
+
+    @field_validator("llm_json_retry_count")
+    @classmethod
+    def validate_json_retry_count(cls, v: int) -> int:
+        """LLM_JSON_RETRY_COUNT는 1~5 범위 (JSON 추출 실패 시 재시도 횟수)."""
+        if v < 1 or v > 5:
+            raise ValueError("LLM_JSON_RETRY_COUNT must be between 1 and 5")
         return v
 
     @field_validator("llm_temperature")

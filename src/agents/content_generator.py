@@ -303,8 +303,9 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
 """
 
         max_tokens = get_settings().llm_max_tokens_default
-        response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
-        teaser_data = self._extract_json(response)
+        teaser_data = self._call_llm_and_extract_json(
+            system_prompt, user_message, max_tokens=max_tokens
+        )
         teaser_data = self._normalize_json_keys(teaser_data, TEASER_KEY_ALIASES)
 
         slides = self._parse_slides(teaser_data.get("slides", []))
@@ -358,17 +359,20 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
         else:
             max_tokens = default_tokens
 
-        response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
-        slides_data = self._extract_json(response)
+        # LLM 호출 + JSON 추출 (실패 시 .env LLM_JSON_RETRY_COUNT 만큼 재시도)
+        slides_data = self._call_llm_and_extract_json(
+            system_prompt, user_message, max_tokens=max_tokens
+        )
         slides_data = self._normalize_json_keys(slides_data, PHASE_KEY_ALIASES)
         slides = self._parse_slides(slides_data.get("slides", []))
 
-        # JSON 실패 또는 슬라이드 없음 시 1회 재생성
+        # JSON 성공했지만 slides 없음 시 1회 재생성
         retry_count = 0
         if not slides_data or not slides_data.get("slides") or len(slides) == 0:
-            logger.warning("Phase %s: JSON 추출 실패 또는 slides 없음, 1회 재생성 시도", phase_num)
-            response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
-            slides_data = self._extract_json(response)
+            logger.warning("Phase %s: slides 없음, 1회 재생성 시도", phase_num)
+            slides_data = self._call_llm_and_extract_json(
+                system_prompt, user_message, max_tokens=max_tokens
+            )
             slides_data = self._normalize_json_keys(slides_data or {}, PHASE_KEY_ALIASES)
             slides = self._parse_slides(slides_data.get("slides", []))
             retry_count = 1
@@ -379,8 +383,9 @@ Phase 0: HOOK (티저) 슬라이드를 생성해주세요.
                 "Phase %s: 슬라이드 %s장 < min_slides %s, 2차 재생성 시도",
                 phase_num, len(slides), min_slides,
             )
-            response = self._call_llm(system_prompt, user_message, max_tokens=max_tokens)
-            slides_data = self._extract_json(response)
+            slides_data = self._call_llm_and_extract_json(
+                system_prompt, user_message, max_tokens=max_tokens
+            )
             slides_data = self._normalize_json_keys(slides_data or {}, PHASE_KEY_ALIASES)
             new_slides = self._parse_slides(slides_data.get("slides", []))
             if len(new_slides) >= len(slides):
