@@ -1,8 +1,31 @@
 # Proposal Agent 고도화 방안 (Advance Plan)
 
 > 작성일: 2026-03-04
-> 현재 버전: v3.6 (Impact-8 Framework)
+> 기준 버전: v3.6 (Impact-8 Framework)
+> **구현 완료: v4.0** (2026-03-04)
 > 목표: 제안서 콘텐츠 품질·시각 품질·생성 속도·안정성 전방위 고도화
+
+## ✅ v4.0 구현 완료 항목
+
+| # | 기능 | 구현 파일 | 상태 |
+|---|------|---------|------|
+| A | RFP Chunking (섹션 우선순위, 40,000자) | `src/parsers/chunker.py` + `rfp_analyzer.py` | ✅ |
+| B | Industry Stats DB (업종별 통계 주입) | `src/data/industry_stats.py` | ✅ |
+| C | Slide Quality Scorer (규칙 기반 자동 채점) | `src/quality/slide_scorer.py` | ✅ |
+| D | Cross-Phase Context (Phase 간 일관성) | `content_generator.py` | ✅ |
+| E | Phase Checkpoint (output/_checkpoints/) | `content_generator.py` | ✅ |
+| F | Negative Prompts (절대 금지 사항) | `content_generator.py` | ✅ |
+| G | Company Profiler (회사 프로필 CLI) | `src/data/company_profiler.py` | ✅ |
+| H | setup-company CLI 명령 | `main.py` | ✅ |
+| I | 폰트 폴백 (Pretendard → 맑은 고딕) | `src/generators/template_manager.py` | ✅ |
+| J | config/settings.py v4.0 환경변수 | `config/settings.py` | ✅ |
+| K | .env.example 고도화 옵션 문서화 | `.env.example` | ✅ |
+| L | PROMPT_VERSION 프로퍼티 기반 버전 관리 | `config/settings.py` | ✅ |
+
+**미구현 (실험적·추후 계획):**
+- Self-Refinement (Draft→Critique→Refine): `ENABLE_SELF_REFINEMENT=false` 기본, 설정 준비 완료
+
+---
 
 ---
 

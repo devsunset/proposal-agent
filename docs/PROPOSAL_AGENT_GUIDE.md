@@ -1,15 +1,20 @@
-# 제안서 자동 생성 에이전트 가이드 (v3.0)
+# 제안서 자동 생성 에이전트 가이드 (v4.0)
 
 ## 1. 시스템 개요
 
 ### 1.1 목적
 RFP(제안요청서) 문서를 입력받아 전문 컨설팅 수준의 PPTX 제안서를 자동 생성하는 Python 에이전트 시스템
 
-### 1.2 핵심 가치
+### 1.2 핵심 가치 (v4.0)
 - **설득력 있는 구조**: Impact-8 Framework 기반 8단계 논리 전개
-- **전략적 메시지**: Win Theme을 통한 일관된 수주 전략
-- **데이터 기반**: KPI 산출 근거를 통한 신뢰성 확보
-- **프로페셔널 디자인**: Modern 디자인 시스템 적용
+- **전략적 메시지**: Win Theme + Cross-Phase Context로 일관된 수주 전략 유지
+- **데이터 기반**: Industry Stats DB + KPI 산출 근거를 통한 수치 구체성
+- **프로페셔널 디자인**: Modern 디자인 시스템 + 폰트 폴백 적용
+- **품질 보증**: Slide Quality Scorer (규칙 기반 자동 채점, LLM 없이 즉시 실행)
+- **완전한 RFP 분석**: RFP Chunking으로 평가기준·요구사항 우선 포함 (40,000자)
+- **안정적 생성**: Phase Checkpoint로 API 실패 시 복구 가능
+
+> **v4.0 신규 CLI**: `python main.py setup-company` — 회사 프로필 설정 (Phase 6 WHY US 품질 향상)
 
 ### 1.3 역할 분리
 

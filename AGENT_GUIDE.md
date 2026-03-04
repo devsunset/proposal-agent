@@ -1,12 +1,21 @@
-# 제안서 자동 생성 에이전트 (Impact-8 + pptx_generator + TemplateManager)
+# 제안서 자동 생성 에이전트 v4.0 (Impact-8 Framework)
 
-> **LLM 설정**: 본 가이드의 콘텐츠 생성·분석 역할은 **.env의 `LLM_PROVIDER`** 설정에 따라 동적으로 적용됩니다.  
-> `LLM_PROVIDER=claude` | `gemini` | `groq` 중 하나를 선택하면, 해당 프로바이더(Claude / Gemini / Groq)가 RFP 분석 및 Phase 0~7 콘텐츠 생성을 수행합니다.
+> **LLM 설정**: 본 가이드의 콘텐츠 생성·분석 역할은 **.env의 `LLM_PROVIDER`** 설정에 따라 동적으로 적용됩니다.
+> `LLM_PROVIDER=claude` | `gemini` | `groq` 중 하나를 선택하면 해당 프로바이더가 RFP 분석 및 Phase 0~7 콘텐츠 생성을 수행합니다.
 
 ## 프로젝트 개요
+
 RFP(제안요청서) 문서를 입력받아 PPTX 형식의 제안서를 자동 생성하는 Python 에이전트 시스템.
 
-**현재 구현**: 문서 파싱(`get_parser_for_path` → PDF/DOCX/TXT/PPTX), RFP 분석·콘텐츠 생성(**설정된 LLM**: Claude/Gemini/Groq, `.env`의 `LLM_PROVIDER`로 선택), PPTX 렌더링(`TemplateManager` + `pptx_generator` + `chart_generator` + `diagram_generator`).
+**현재 구현 (v4.0)**:
+- 문서 파싱 (`get_parser_for_path` → PDF/DOCX/TXT/PPTX)
+- RFP 청킹 (`RFPChunker` — 섹션별 우선순위 기반, 평가기준·요구사항 우선 포함)
+- RFP 분석·콘텐츠 생성 (Claude/Gemini/Groq, `.env`의 `LLM_PROVIDER`로 선택)
+- Cross-Phase Context (이전 Phase 결론을 다음 Phase에 자동 전달)
+- Industry Stats DB (업종별 검증 통계 프롬프트 주입)
+- Slide Quality Scoring (규칙 기반 자동 채점)
+- Phase Checkpoint (output/_checkpoints/ 자동 저장)
+- PPTX 렌더링 (`TemplateManager` + `pptx_generator` + `chart_generator` + `diagram_generator`)
 
 ## ★★★ 제안서 생성 워크플로우 (최우선 규칙)
 
@@ -22,28 +31,30 @@ output/테스트 XX/        ← PPTX 출력 (생성 스크립트 + 결과물)
 
 **STEP 1: RFP 분석** (제안요청서 폴더 내 PDF 읽기)
 - `제안요청서/테스트 XX/` 내 모든 PDF를 분석
-- 추출 항목: 프로젝트명, 발주처, 과업 범위, 평가 기준, 예산, 일정, 특이사항
+- RFP Chunking: 섹션 우선순위 분류 → 평가기준·요구사항 우선 포함 (최대 40,000자)
+- 추출 항목: 프로젝트명, 발주처, 과업 범위, 평가 기준(배점), 예산, 일정, Pain Point, Win Theme 후보
 - 프로젝트 유형 판별: marketing_pr / event / it_system / public / consulting
 
 **STEP 2: 콘텐츠 기획** (Impact-8 Phase 구조)
 - Phase 0~7 콘텐츠를 RFP 맞춤형으로 설계
-- Win Theme 3개 도출
+- Win Theme 3개 도출 + Cross-Phase 일관성 유지
 - Action Title (인사이트 기반 문장형 제목) 작성
 - KPI + 산출근거 설계
+- Industry Stats DB에서 업종별 통계 자동 주입
 
 **STEP 3: 생성 스크립트 작성**
 - `output/테스트 XX/generate_제안서.py` 스크립트 생성
-- **PPTX 생성**: `src/generators/pptx_generator.py` + `TemplateManager` + `chart_generator` / `diagram_generator` 사용 (CLI `main.py generate`가 내부에서 사용)
+- **PPTX 생성**: `src/generators/pptx_generator.py` + `TemplateManager` + `chart_generator` / `diagram_generator` 사용
 - 목표 분량: 40~80장 (프로젝트 규모에 따라 조정)
 
 **STEP 4: 실행 및 검증**
 - 스크립트 실행하여 PPTX 생성 (또는 `python main.py generate ...` 직접 실행)
-- 생성 파일: `output/프로젝트명_YYYYMMDDHHmmssfff.pptx` (타임스탬프로 유일 파일명)
+- 생성 파일: `output/프로젝트명_YYYYMMDDHHmmssfff.pptx`
 - 오류 발생 시 즉시 수정 후 재실행
 
 ### 레이아웃·슬라이드 (현재 구현)
 
-PPTX 생성은 `src/generators/pptx_generator.py`(제목/본문/테이블/2·3단), `chart_generator.py`(차트·타임라인·조직도), `diagram_generator.py`(프로세스 플로우)와 `TemplateManager`(템플릿·디자인 시스템)로 수행됩니다.  
+PPTX 생성은 `src/generators/pptx_generator.py`(제목/본문/테이블/2·3단), `chart_generator.py`(차트·타임라인·조직도), `diagram_generator.py`(프로세스 플로우)와 `TemplateManager`(템플릿·디자인 시스템·폰트 폴백)로 수행됩니다.
 `main.py generate` 명령이 RFP 파싱 → 콘텐츠 생성(설정된 LLM) → PPTX 렌더링을 한 번에 실행합니다.
 
 ### ★★★ 겹침·공백 방지 규칙 (참고)
@@ -98,53 +109,53 @@ MT(불릿)   → 다음 요소:  0.20"
 ### 기본 사용 패턴 (CLI)
 
 ```bash
-# 제안서 생성 (RFP → 파싱 → 분석 → 콘텐츠 → PPTX)
+# (최초 1회) 회사 프로필 설정 → Phase 6 WHY US 실제 역량 반영
+python main.py setup-company
+
+# 제안서 생성 (RFP → 파싱 → RFP Chunking → 분석 → 콘텐츠 → PPTX)
 python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처"
 
 # RFP 분석만
 python main.py analyze input/rfp.pdf
 ```
 
-Win Theme, Executive Summary, Action Title 등은 콘텐츠 생성(Impact-8) 단계에서 **설정된 LLM**으로 자동 반영됩니다.
-- Win Theme: 제안서 전체에 반복되는 핵심 수주 전략 메시지
-- Executive Summary: 의사결정권자용 1페이지 핵심 요약
-- Next Step: 다음 단계 안내 / Call to Action
-- Action Title: 인사이트 기반 슬라이드 제목 (Topic Title → Action Title)
+Win Theme, Executive Summary, Action Title, Industry Stats 주입은 콘텐츠 생성(Impact-8) 단계에서 **설정된 LLM**으로 자동 반영됩니다.
 
 ## 역할 분리
 
 ### 설정된 LLM (콘텐츠 생성) — .env의 LLM_PROVIDER에 따라 Claude / Gemini / Groq 중 하나
-- RFP 문서 분석 및 핵심 정보 추출
-- Phase 0~7 제안서 콘텐츠 생성
+- RFP 문서 분석 및 핵심 정보 추출 (RFP Chunking으로 품질 향상)
+- Phase 0~7 제안서 콘텐츠 생성 (Cross-Phase Context 유지)
 - 수주 전략 및 차별화 포인트 도출
 - 실제 콘텐츠 예시 생성 (마케팅/PR)
 
-### [회사명] (문서화)
+### PPTX 생성 레이어
 - PPTX 변환 및 Modern 스타일 디자인 적용
-- 슬라이드 레이아웃 및 포맷팅
+- 슬라이드 레이아웃 및 포맷팅 (TemplateManager, 폰트 폴백 포함)
 - 차트, 타임라인, 조직도 생성
 
 ## 디렉토리 구조
 
 ```
-├── main.py                 # CLI 엔트리포인트 (generate, analyze, types, info, templates)
-├── AGENT_GUIDE.md          # 본 가이드 (.env LLM_PROVIDER에 따른 동적 적용 안내)
+├── main.py                 # CLI (generate, analyze, setup-company, types, info, templates)
+├── AGENT_GUIDE.md          # 본 가이드
 ├── config/
-│   ├── settings.py         # API 키·LLM 선택·경로·재시도/토큰 (Pydantic)
-│   ├── proposal_types.py   # 제안서 유형 6종·Phase 가중치 (get_config, get_type_display_name)
-│   └── prompts/            # Phase별 프롬프트 (content_guidelines, phase0_hook ~ phase7_investment)
+│   ├── settings.py         # API 키·LLM 선택·v4.0 고도화 옵션
+│   ├── proposal_types.py   # 제안서 유형 6종·Phase 가중치
+│   └── prompts/            # Phase별 프롬프트
 ├── src/
-│   ├── parsers/            # 문서 파싱 (PDF, DOCX, TXT, PPTX) — get_parser_for_path
-│   ├── agents/             # RFP 분석·콘텐츠 생성 (설정된 LLM)
-│   ├── generators/         # PPTX: template_manager, pptx_generator, chart_generator, diagram_generator
+│   ├── parsers/            # 문서 파싱 (PDF/DOCX/TXT/PPTX) + RFPChunker
+│   ├── agents/             # base_agent, rfp_analyzer, content_generator (v4.0)
+│   ├── data/               # company_profiler, industry_stats
+│   ├── quality/            # slide_scorer (규칙 기반 품질 채점)
+│   ├── generators/         # template_manager (폰트 폴백), pptx_generator, chart_generator, diagram_generator
 │   ├── orchestrators/      # proposal_orchestrator, pptx_orchestrator
-│   └── schemas/            # Pydantic 스키마 (proposal_schema, rfp_schema)
+│   └── schemas/            # Pydantic 스키마
 ├── templates/              # PPTX 템플릿
-├── company_data/           # 회사 정보
+├── company_data/           # 회사 프로필 JSON (setup-company로 생성)
 ├── input/                  # RFP 입력
-├── output/                 # PPTX 출력
+├── output/                 # PPTX 출력 + _checkpoints/
 └── 제안서/                 # 레퍼런스 제안서
-    └── reference_proposal.pdf (비공개)
 ```
 
 ## 사용법
@@ -156,23 +167,21 @@ pip install -r requirements.txt
 # .env 설정 — 사용할 LLM 하나 선택 후 해당 API 키 설정
 cp .env.example .env
 # LLM_PROVIDER=claude | gemini | groq (하나만 선택)
-# claude → ANTHROPIC_API_KEY
-# gemini → GEMINI_API_KEY
-# groq   → GROQ_API_KEY
 
-# 제안서 생성 (기본: Impact-8 구조, 설정된 LLM 사용)
+# (최초 1회) 회사 프로필 설정
+python main.py setup-company
+
+# 제안서 생성
 python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처"
 
-# 프로젝트 유형 지정
+# 유형 지정
 python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처" -t marketing_pr
 
-# RFP 분석만 수행
+# RFP 분석만
 python main.py analyze input/rfp.pdf
 ```
 
 ## 제안서 구조: Impact-8 Framework
-
-실제 수주 성공 제안서 분석을 기반으로 개선된 8-Phase 구조
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -183,7 +192,7 @@ python main.py analyze input/rfp.pdf
 │  → Executive Summary (의사결정자용 5분 요약)                 │
 ├─────────────────────────────────────────────────────────────┤
 │  PHASE 2: INSIGHT                             8-15p (10%)  │
-│  → 시장 환경 + 문제 정의 + 숨겨진 니즈                       │
+│  → 시장 환경 + 문제 정의 + 숨겨진 니즈 + 업종 통계            │
 ├─────────────────────────────────────────────────────────────┤
 │  PHASE 3: CONCEPT & STRATEGY                  8-15p (12%)  │
 │  → 핵심 컨셉 + 차별화 전략 + 경쟁 우위                       │
@@ -195,7 +204,7 @@ python main.py analyze input/rfp.pdf
 │  → 조직 + 운영 + 품질관리 + 리포팅                          │
 ├─────────────────────────────────────────────────────────────┤
 │  PHASE 6: WHY US                              8-15p (12%)  │
-│  → 수행 역량 + 유사 실적 + 레퍼런스                          │
+│  → 수행 역량 + 유사 실적 (company_profile.json 자동 반영)    │
 ├─────────────────────────────────────────────────────────────┤
 │  PHASE 7: INVESTMENT & ROI                    4-8p (6%)    │
 │  → 투자 비용 + 정량적 효과 + ROI                            │
@@ -203,89 +212,41 @@ python main.py analyze input/rfp.pdf
   총 70-140p (프로젝트 규모에 따라 조정)
 ```
 
-## 프로젝트 유형별 가중치
+## v4.0 고도화 기능 상세
 
-| Phase | Marketing/PR | Event | IT/System | Public | Consulting |
-|-------|-------------|-------|-----------|--------|------------|
-| 0. HOOK | 8% | 6% | 3% | 3% | 5% |
-| 1. SUMMARY | 5% | 5% | 8% | 8% | 8% |
-| 2. INSIGHT | 12% | 8% | 12% | 15% | 15% |
-| 3. CONCEPT | 12% | 10% | 10% | 10% | 12% |
-| 4. ACTION | **40%** | **45%** | 35% | 30% | 30% |
-| 5. MANAGEMENT | 8% | 10% | 12% | 12% | 10% |
-| 6. WHY US | 10% | 10% | 12% | 15% | 12% |
-| 7. INVESTMENT | 5% | 6% | 8% | 7% | 8% |
+### RFP Chunking (`src/parsers/chunker.py`)
+- 한국어 공공 문서 헤딩 패턴 인식 (제N장, 1., 가., I., ■ 등)
+- 섹션 우선순위: HIGH(평가기준·배점·요구사항) → MEDIUM(일정·예산·산출물) → LOW(기타)
+- HIGH 섹션 전문 포함, MEDIUM 2,000자, LOW 500자 제한으로 40,000자 구성
+- 헤딩 없는 문서는 4,000자 슬라이딩 윈도우로 폴백
 
-## v3.1 핵심 컴포넌트
+### Slide Quality Scorer (`src/quality/slide_scorer.py`)
+| 항목 | 가중치 | 측정 내용 |
+|------|--------|---------|
+| Action Title | 25% | 금지 패턴(에 대하여·의 현황 등), 수치·결론 동사 포함 |
+| Content Richness | 30% | 불릿 수, 평균 텍스트 길이, 테이블 행 수 |
+| Specificity | 25% | 수치+단위, 연도/기간, 출처, KPI 패턴 |
+| Placeholder Abuse | 15% | [대괄호] 남용 검사 (허용 플레이스홀더 제외) |
+| Type Fitness | 5% | 슬라이드 유형 대비 데이터 구비 여부 |
 
-### Win Theme (수주 전략 메시지)
-제안서 전체에 반복되는 3대 핵심 수주 전략 메시지
+### Cross-Phase Context
+- 각 Phase 완료 후 핵심 결론(최대 3개) 추출
+- 다음 Phase 프롬프트에 이전 Phase 결론 섹션으로 자동 주입
+- Win Theme 일관성·내러티브 흐름 유지
 
-```python
-WIN_THEMES = {
-    "data": "데이터 기반 타겟 마케팅",
-    "community": "시민 참여형 브랜드 빌딩",
-    "integration": "온-오프라인 통합 시너지",
-}
-```
+### Industry Stats DB (`src/data/industry_stats.py`)
+- 업종별 검증 통계 (marketing_pr, it_system, event, public, consulting)
+- Phase별 관련 통계 자동 선택 → 프롬프트 주입
+- `INDUSTRY_STATS_PATH` 환경 변수로 커스텀 통계 JSON 사용 가능
 
-- 각 섹션 구분자에 관련 Win Theme 표시
-- 슬라이드 내에서 Win Theme 뱃지로 강조
-- 일관된 메시지 반복으로 수주 전략 강화
-
-### Action Title (인사이트 기반 제목)
-Topic Title에서 Action Title로 전환
-
-| Before (Topic Title) | After (Action Title) |
-|---------------------|---------------------|
-| 타겟 분석 | MZ세대 2030이 핵심, 하루 SNS 55분 사용 |
-| 채널 전략 | 인스타그램 중심, 릴스로 도달률 3배 확보 |
-| 예산 계획 | 월 3,000만원으로 팔로워 50만 달성 |
-
-### Executive Summary
-의사결정권자용 1페이지 핵심 요약
-
-구성요소:
-- 프로젝트 목표 (One Sentence Pitch)
-- 3대 Win Theme
-- 핵심 KPI (산출 근거 포함)
-- Why Us 핵심 차별점
-
-### Next Step (Call to Action)
-다음 단계 안내 및 행동 촉구
-
-```
-┌─────────────────────────────────────────┐
-│  NEXT STEP                              │
-│                                         │
-│  STEP 1: 제안 설명회 (00월 00일)         │
-│  STEP 2: Q&A 및 추가 협의               │
-│  STEP 3: 계약 체결                      │
-│                                         │
-│  Contact: [담당자 정보]                 │
-└─────────────────────────────────────────┘
-```
-
-### KPI 산출 근거
-모든 KPI에 산출 근거 필수 포함
-
-```
-목표: 팔로워 +30%
-산출 근거: 인플루언서 협업 +10% + 릴스 확대 +12% + 이벤트 +8%
-데이터 출처: 유사 프로젝트 평균 성장률 참고
-```
-
-### Placeholder 표준화
-미완성 콘텐츠 표기 형식 통일: `[대괄호]`
-
-```
-✅ [발주처명], [프로젝트명], [담당자 연락처]
-❌ OOO, XXX, ___
+### Company Profiler (`src/data/company_profiler.py`)
+```bash
+python main.py setup-company
+# → company_data/company_profile.json 생성
+# → Phase 6(WHY US) 생성 시 실제 역량·실적 자동 반영
 ```
 
 ## 디자인 스타일: Modern
-
-실제 수주 성공 제안서를 분석하여 추출한 디자인 시스템
 
 ### 컬러 팔레트
 - Primary: `#002C5F` (다크 블루)
@@ -293,63 +254,33 @@ Topic Title에서 Action Title로 전환
 - Teal: `#00A19C` (틸 - Win Theme 뱃지용)
 - Accent: `#E63312` (레드)
 - Dark BG: `#1A1A1A`
-- Light BG: `#F5F5F5` (밝은 배경)
 
 ### 타이포그래피
-- Font: Pretendard
-- 티저 타이틀: 72pt Bold
-- 섹션 타이틀: 48pt Bold
-- 슬라이드 타이틀: 36pt SemiBold
-- 본문: 18pt Regular
+- 기본 폰트: 맑은 고딕 (템플릿 PPTX 폰트 자동 적용, 미설치 폰트는 자동 폴백)
+- 티저 타이틀: 72pt Bold / 섹션: 48pt Bold / 슬라이드: 36pt SemiBold / 본문: 18pt Regular
 
 ### 레이아웃
 - 16:9 비율 (1920 x 1080)
-- 여백: 상 80px, 하 60px, 좌우 100px
-- 섹션 구분자: 다크 배경, 대형 숫자 아웃라인
 
-## 핵심 컴포넌트
+## 핵심 스키마
 
-### 스키마 (설정된 LLM ↔ [회사명] 인터페이스)
-- `src/schemas/proposal_schema.py` - ProposalContent, PhaseContent (v3.1)
-  - 새로운 모델: WinTheme, KPIWithBasis, ExecutiveSummary, NextStep, ActionTitle
-  - 새로운 SlideType: EXECUTIVE_SUMMARY, NEXT_STEP, DIFFERENTIATION
-- `src/schemas/rfp_schema.py` - RFPAnalysis
+- `src/schemas/proposal_schema.py` — ProposalContent, PhaseContent, SlideContent, SlideType 등
+- `src/schemas/rfp_schema.py` — RFPAnalysis (pain_points, win_theme_candidates, evaluation_strategy 포함)
 
-### 에이전트 (설정된 LLM — .env LLM_PROVIDER: claude | gemini | groq)
-- `src/agents/rfp_analyzer.py` - RFP 분석
-- `src/agents/content_generator.py` - 콘텐츠 생성
+## 수정 포인트 요약
 
-### 생성기 ([회사명])
-- `src/generators/pptx_generator.py` - 슬라이드 생성 (v3.1)
-  - 새로운 메서드: add_executive_summary_slide(), add_next_step_slide(), add_section_divider_with_win_theme()
-- `src/generators/chart_generator.py` - 차트/다이어그램
-
-### 디자인 설정
-- `src/generators/template_manager.py` - 템플릿 로드·디자인 시스템 (색상·폰트·레이아웃). `_get_default_design_system()`으로 기본값 정의, 템플릿 PPTX 로드 시 해당 파일 테마를 동적 추출해 병합합니다.
-
-### 콘텐츠 가이드라인
-- `config/prompts/content_guidelines.txt` - Action Title, Win Theme, KPI 산출 근거 작성 가이드
-
-## 마케팅/PR 특화 기능
-
-### 콘텐츠 예시 생성
-- 실제 포스팅 예시 (비주얼 설명, 카피)
-- 해시태그 전략
-- 캠페인 상세 기획
-
-### 채널별 전략
-- Instagram: 피드, 스토리, 릴스
-- YouTube: 롱폼, 숏폼, 커뮤니티
-- Facebook, X, TikTok, Blog
-
-### 캠페인 기획
-- 캠페인 컨셉 및 목표
-- 실행 계획
-- 예상 성과
+| 수정 목적 | 수정 파일 |
+|----------|----------|
+| Phase 비중/슬라이드 수 변경 | `config/proposal_types.py` |
+| AI 생성 콘텐츠 규칙 변경 | `config/prompts/phase*.txt` |
+| 컬러/폰트/디자인 변경 | `src/generators/template_manager.py` |
+| RFP 청킹 설정 | `.env` ENABLE_RFP_CHUNKING, RFP_CHUNK_MAX_CHARS |
+| 품질 기준 변경 | `.env` MIN_QUALITY_SCORE, MIN_SLIDE_QUALITY_SCORE |
+| 업종 통계 커스터마이징 | `INDUSTRY_STATS_PATH=경로.json` |
+| 프롬프트 버전 분리 | `PROMPT_VERSION=v4.0` + `config/prompts/v4.0/` |
 
 ## 레퍼런스
 
 - 실제 수주 성공 제안서 (200p+) — 구조 분석 레퍼런스
   - 구조: INTRO(13p) + CONCEPT(31p) + STRATEGY(14p) + ACTION PLAN(101p) + MANAGEMENT(16p) + CREDENTIALS(44p)
   - 핵심: ACTION PLAN이 전체의 46% 차지
-  - 특징: 실제 콘텐츠 예시, AI 캠페인, 숏폼-롱폼 연계 전략

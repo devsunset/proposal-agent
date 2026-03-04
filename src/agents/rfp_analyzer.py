@@ -1,4 +1,4 @@
-"""RFP 분석 에이전트"""
+"""RFP 분석 에이전트 (v4.0 — RFP Chunking 지원)"""
 
 import json
 from typing import Any, Callable, Dict, Optional
@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional
 from config.settings import get_settings
 from .base_agent import BaseAgent
 from ..schemas.rfp_schema import RFPAnalysis
+from ..parsers.chunker import RFPChunker
 from ..utils.logger import get_logger
 
 logger = get_logger("rfp_analyzer")
@@ -63,10 +64,28 @@ class RFPAnalyzer(BaseAgent):
         if not system_prompt:
             system_prompt = self._get_default_system_prompt()
 
-        # 입력 데이터 준비
-        raw_text = self._truncate_text(input_data.get("raw_text", ""), 25000)
+        # 입력 데이터 준비 — RFP Chunking으로 컨텍스트 품질 향상
+        settings = get_settings()
+        raw_text_full = input_data.get("raw_text", "")
+        tables = input_data.get("tables", [])
+
+        if settings.enable_rfp_chunking and len(raw_text_full) > 10000:
+            chunker = RFPChunker()
+            raw_text = chunker.build_analysis_context(
+                raw_text_full,
+                tables=tables,
+                max_chars=settings.rfp_chunk_max_chars,
+            )
+            logger.info(
+                "RFP Chunking 적용: {}자 → {}자 (평가기준·요구사항 우선 포함)",
+                len(raw_text_full),
+                len(raw_text),
+            )
+        else:
+            raw_text = self._truncate_text(raw_text_full, 25000)
+
         tables_json = json.dumps(
-            input_data.get("tables", [])[:10], ensure_ascii=False, indent=2
+            tables[:10], ensure_ascii=False, indent=2
         )[:5000]
 
         user_message = f"""

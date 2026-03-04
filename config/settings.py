@@ -117,10 +117,20 @@ class Settings(BaseModel):
     # -------------------------------------------------------------------------
     base_dir: Path = Path(__file__).parent.parent
     templates_dir: Path = base_dir / "templates"
-    prompts_dir: Path = base_dir / "config" / "prompts"
     company_data_dir: Path = base_dir / "company_data"
     output_dir: Path = base_dir / "output"
     input_dir: Path = base_dir / "input"
+
+    @property
+    def prompts_dir(self) -> Path:
+        """PROMPT_VERSION 환경변수가 있으면 버전 디렉토리 사용 (예: config/prompts/v4.0)."""
+        base = self.base_dir / "config" / "prompts"
+        v = (self.prompt_version or "").strip()
+        if v:
+            versioned = base / v
+            if versioned.exists():
+                return versioned
+        return base
 
     # -------------------------------------------------------------------------
     # PPTX 기본값 (템플릿 미사용 시)
@@ -128,6 +138,36 @@ class Settings(BaseModel):
     default_template: str = "base_template"
     slide_width_inches: float = 13.33
     slide_height_inches: float = 7.5
+
+    # -------------------------------------------------------------------------
+    # 고도화 기능 활성화 옵션 (advance.md Phase 1~2)
+    # -------------------------------------------------------------------------
+    # RFP 청킹: 의미 단위 분할로 25,000자 제한 해소
+    enable_rfp_chunking: bool = os.getenv("ENABLE_RFP_CHUNKING", "true").lower() == "true"
+    rfp_chunk_max_chars: int = int(os.getenv("RFP_CHUNK_MAX_CHARS", "40000") or "40000")
+
+    # Draft → Critique → Refine 사이클 (토큰 비용 3배, 기본 off)
+    enable_self_refinement: bool = os.getenv("ENABLE_SELF_REFINEMENT", "false").lower() == "true"
+
+    # Phase별 체크포인트 저장 (API 실패 시 재시작 불필요)
+    enable_checkpoint: bool = os.getenv("ENABLE_CHECKPOINT", "true").lower() == "true"
+
+    # 슬라이드 품질 자동 스코어링 (규칙 기반, 경고 출력)
+    enable_quality_scoring: bool = os.getenv("ENABLE_QUALITY_SCORING", "true").lower() == "true"
+    min_quality_score: int = int(os.getenv("MIN_QUALITY_SCORE", "60") or "60")
+    min_slide_quality_score: int = int(os.getenv("MIN_SLIDE_QUALITY_SCORE", "40") or "40")
+
+    # Cross-Phase Context: 이전 Phase 결론을 다음 Phase에 전달
+    enable_cross_phase_context: bool = os.getenv("ENABLE_CROSS_PHASE_CONTEXT", "true").lower() == "true"
+
+    # 산업 통계 DB 주입 (프롬프트에 검증된 통계 삽입)
+    enable_industry_stats: bool = os.getenv("ENABLE_INDUSTRY_STATS", "true").lower() == "true"
+
+    # 프롬프트 버전 관리
+    prompt_version: str = os.getenv("PROMPT_VERSION", "")
+
+    # 품질 개선: Action Title 자동 수정 시도
+    enable_auto_fix_titles: bool = os.getenv("ENABLE_AUTO_FIX_TITLES", "false").lower() == "true"
 
     class Config:
         arbitrary_types_allowed = True

@@ -21,6 +21,27 @@ from config.settings import get_settings
 logger = get_logger("template_manager")
 _DML_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 
+# 시스템에 없을 수 있는 폰트 → 대체 폰트 매핑 (폰트 폴백)
+_FONT_FALLBACK_MAP: Dict[str, str] = {
+    "Pretendard": "맑은 고딕",
+    "Pretendard Variable": "맑은 고딕",
+    "Pretendard JP": "맑은 고딕",
+    "Noto Sans KR": "맑은 고딕",
+    "Spoqa Han Sans": "맑은 고딕",
+    "Spoqa Han Sans Neo": "맑은 고딕",
+    "KoPubWorld Dotum": "맑은 고딕",
+    "Apple SD Gothic Neo": "맑은 고딕",
+    "Apple Gothic": "맑은 고딕",
+    "Nanum Gothic": "맑은 고딕",
+    "NanumGothic": "맑은 고딕",
+}
+
+# Windows/macOS에서 기본 제공이 확실한 시스템 폰트
+_SAFE_SYSTEM_FONTS = frozenset({
+    "맑은 고딕", "Malgun Gothic", "Arial", "Calibri", "Segoe UI",
+    "AppleGothic", "Helvetica", "Times New Roman",
+})
+
 
 class TemplateManager:
     """
@@ -205,8 +226,12 @@ class TemplateManager:
         if extracted.get("fonts"):
             for k in ("title", "body", "english"):
                 if k in extracted["fonts"] and extracted["fonts"][k]:
-                    self.design_system["fonts"][k] = str(extracted["fonts"][k])
-            logger.info("템플릿 PPTX 테마 폰트 적용: {}", extracted.get("fonts"))
+                    raw_font = str(extracted["fonts"][k])
+                    self.design_system["fonts"][k] = self._safe_font_name(raw_font)
+            logger.info("템플릿 PPTX 테마 폰트 적용: {}", {
+                k: self.design_system["fonts"][k] for k in ("title", "body", "english")
+                if k in self.design_system["fonts"]
+            })
 
     def _extract_layout_from_presentation(self, prs: Presentation) -> None:
         """
@@ -400,3 +425,34 @@ class TemplateManager:
     def get_font_name(self, font_type: str = "body") -> str:
         """폰트 이름 반환"""
         return self.design_system["fonts"].get(font_type, "맑은 고딕")
+
+    def _safe_font_name(self, font_name: str) -> str:
+        """
+        폰트 이름의 시스템 가용성 검사 후 안전한 폰트명 반환.
+
+        1) _FONT_FALLBACK_MAP에 등록된 폰트면 대체 폰트 사용
+        2) 시스템 폰트 디렉토리 검색으로 실제 설치 여부 확인
+        3) 확인 불가 시 원본 이름 반환 (PPTX 렌더러가 자체 폴백 처리)
+        """
+        if not font_name:
+            return "맑은 고딕"
+        if font_name in _SAFE_SYSTEM_FONTS:
+            return font_name
+        if font_name in _FONT_FALLBACK_MAP:
+            fallback = _FONT_FALLBACK_MAP[font_name]
+            logger.info("폰트 폴백 적용: {} → {}", font_name, fallback)
+            return fallback
+        # 시스템 폰트 파일로 존재 여부 확인 (Windows: C:/Windows/Fonts)
+        import platform
+        if platform.system() == "Windows":
+            font_dir = Path("C:/Windows/Fonts")
+            font_lower = font_name.lower().replace(" ", "")
+            if font_dir.exists():
+                for ext in ("ttf", "otf", "ttc"):
+                    for f in font_dir.glob(f"*.{ext}"):
+                        if font_lower in f.stem.lower().replace(" ", ""):
+                            return font_name
+                # 찾지 못하면 폴백
+                logger.info("폰트 미설치, 폴백 적용: {} → 맑은 고딕", font_name)
+                return "맑은 고딕"
+        return font_name
