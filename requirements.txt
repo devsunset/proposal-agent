@@ -26,6 +26,9 @@ rich>=13.7.0
 python-dotenv>=1.0.0
 loguru>=0.7.0
 
+# 수동 모드 브라우저 자동화 (manual-step --site gemini|chatgpt)
+playwright>=1.49.0
+
 # Testing
 pytest>=7.0.0
 

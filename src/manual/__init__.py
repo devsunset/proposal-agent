@@ -7,6 +7,7 @@ from .manual_orchestrator import (
     create_run_dir,
     resolve_manual_run_dir,
 )
+from .browser_automation import run_automation
 
 __all__ = [
     "ManualOrchestrator",
@@ -14,4 +15,5 @@ __all__ = [
     "_step_response_file_name",
     "create_run_dir",
     "resolve_manual_run_dir",
+    "run_automation",
 ]
