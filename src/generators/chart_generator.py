@@ -131,9 +131,14 @@ class ChartGenerator:
             return
 
         num_phases = len(timeline_items)
-        total_width = 12.0
+        slide_w = self.template_manager.get_slide_width_inches()
+        margin_h = 0.50
+        total_width = slide_w - 2 * margin_h
         phase_width = total_width / num_phases
-        left_start = 0.67
+        left_start = margin_h
+        slide_h = self.template_manager.get_slide_height_inches()
+        key_msg_top = 4.75
+        desc_max_bottom = key_msg_top - 0.25
 
         # 각 Phase 박스 추가
         colors = [
@@ -159,22 +164,24 @@ class ChartGenerator:
             shape.fill.fore_color.rgb = color
             shape.line.fill.background()
 
-            # Phase 텍스트
+            # Phase 텍스트 (길이 제한으로 잘림 방지)
             tf = shape.text_frame
             tf.word_wrap = True
+            phase_text = (item.phase or "")[:25]
+            title_text = (item.title or "")[:30]
 
             # Phase 번호/이름
             p1 = tf.paragraphs[0]
-            p1.text = item.phase
-            p1.font.size = Pt(14)
+            p1.text = phase_text
+            p1.font.size = Pt(12)
             p1.font.bold = True
             p1.font.color.rgb = RGBColor(255, 255, 255)
             p1.alignment = PP_ALIGN.CENTER
 
             # Phase 제목
             p2 = tf.add_paragraph()
-            p2.text = item.title
-            p2.font.size = Pt(12)
+            p2.text = title_text
+            p2.font.size = Pt(11)
             p2.font.color.rgb = RGBColor(255, 255, 255)
             p2.alignment = PP_ALIGN.CENTER
 
@@ -192,27 +199,29 @@ class ChartGenerator:
             duration_p.font.color.rgb = self.template_manager.get_color("text_light")
             duration_p.alignment = PP_ALIGN.CENTER
 
-            # 설명 또는 마일스톤 (있는 경우)
+            # 설명 또는 마일스톤 (슬라이드 하단 넘침 방지)
             if item.description or item.milestones:
+                desc_top = top + 1.8
+                desc_height = min(2.2, max(0.5, desc_max_bottom - desc_top))
                 desc_box = slide.shapes.add_textbox(
                     Inches(left),
-                    Inches(top + 1.8),
-                    Inches(phase_width - 0.2),
-                    Inches(2.5),
+                    Inches(desc_top),
+                    Inches(phase_width - 0.25),
+                    Inches(desc_height),
                 )
                 desc_tf = desc_box.text_frame
                 desc_tf.word_wrap = True
 
                 if item.description:
                     desc_p = desc_tf.paragraphs[0]
-                    desc_p.text = item.description
-                    desc_p.font.size = Pt(10)
+                    desc_p.text = (item.description or "")[:120]
+                    desc_p.font.size = Pt(9)
 
                 if item.milestones:
-                    for milestone in item.milestones:
+                    for milestone in (item.milestones or [])[:4]:
                         ms_p = desc_tf.add_paragraph()
-                        ms_p.text = f"• {milestone}"
-                        ms_p.font.size = Pt(10)
+                        ms_p.text = f"• {(str(milestone))[:40]}"
+                        ms_p.font.size = Pt(9)
 
         # 화살표 추가 (Phase 간)
         arrow_y = top + 0.5
