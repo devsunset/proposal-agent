@@ -312,7 +312,9 @@ class PPTXOrchestrator:
             examples = []
             if slide.content_examples:
                 for ex in slide.content_examples:
-                    if hasattr(ex, 'dict'):
+                    if hasattr(ex, 'model_dump'):
+                        examples.append(ex.model_dump())
+                    elif hasattr(ex, 'dict'):
                         examples.append(ex.dict())
                     elif isinstance(ex, dict):
                         examples.append(ex)
@@ -326,16 +328,29 @@ class PPTXOrchestrator:
             )
 
         elif slide_type == "channel_strategy":
-            # 채널 전략 슬라이드
+            # 채널 전략 슬라이드 (channel_strategy는 Optional[ChannelStrategy] 단일 객체)
             channels = []
             if slide.channel_strategy:
-                for ch in slide.channel_strategy:
-                    if hasattr(ch, 'dict'):
-                        channels.append(ch.dict())
-                    elif isinstance(ch, dict):
-                        channels.append(ch)
-                    else:
-                        channels.append({"name": str(ch), "role": "", "kpis": []})
+                ch = slide.channel_strategy
+                if hasattr(ch, 'model_dump'):
+                    channels = [ch.model_dump()]
+                elif hasattr(ch, 'dict'):
+                    channels = [ch.dict()]
+                elif isinstance(ch, dict):
+                    channels = [ch]
+                elif isinstance(ch, list):
+                    # 혹시 리스트로 들어온 경우에도 처리
+                    for item in ch:
+                        if hasattr(item, 'model_dump'):
+                            channels.append(item.model_dump())
+                        elif hasattr(item, 'dict'):
+                            channels.append(item.dict())
+                        elif isinstance(item, dict):
+                            channels.append(item)
+                        else:
+                            channels.append({"name": str(item), "role": "", "kpis": []})
+                else:
+                    channels = [{"name": str(ch), "role": "", "kpis": []}]
 
             self.generator.add_channel_strategy_slide(
                 title=slide.title,
@@ -346,7 +361,9 @@ class PPTXOrchestrator:
         elif slide_type == "campaign":
             # 캠페인 슬라이드
             campaign_data = slide.campaign or {}
-            if hasattr(campaign_data, 'dict'):
+            if hasattr(campaign_data, 'model_dump'):
+                campaign_data = campaign_data.model_dump()
+            elif hasattr(campaign_data, 'dict'):
                 campaign_data = campaign_data.dict()
 
             activities_raw = campaign_data.get("activities", slide.bullets or [])
@@ -415,7 +432,9 @@ class PPTXOrchestrator:
 
             if slide.kpis:
                 for kpi in slide.kpis:
-                    if hasattr(kpi, 'dict'):
+                    if hasattr(kpi, 'model_dump'):
+                        case_data["kpis"].append(kpi.model_dump())
+                    elif hasattr(kpi, 'dict'):
                         case_data["kpis"].append(kpi.dict())
                     elif isinstance(kpi, dict):
                         case_data["kpis"].append(kpi)

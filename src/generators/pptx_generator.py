@@ -131,6 +131,7 @@ class PPTXGenerator:
         slide = self.prs.slides.add_slide(slide_layout)
 
         # 제목 설정 (길이 제한으로 범위 이탈 방지)
+        title_set = False
         if slide.shapes.title:
             title_shape = slide.shapes.title
             title_shape.text = _truncate(title, 100)
@@ -141,10 +142,20 @@ class PPTXGenerator:
                     size_name="part_title" if is_part_divider else "cover_title",
                 )
             tf.word_wrap = True
+            title_set = True
 
-        # 부제목 설정
+        # 제목 플레이스홀더가 없으면 텍스트박스로 대체
+        if not title_set:
+            self._add_title_textbox(
+                slide,
+                _truncate(title, 100),
+                size_name="part_title" if is_part_divider else "cover_title",
+            )
+
+        # 부제목 설정 (placeholder idx=1이 없으면 텍스트박스 대체)
         if subtitle:
             sub_display = _truncate(subtitle, 150)
+            sub_set = False
             for shape in slide.placeholders:
                 if shape.placeholder_format.idx == 1:
                     shape.text = sub_display
@@ -155,7 +166,20 @@ class PPTXGenerator:
                             color_name="text_light",
                         )
                     shape.text_frame.word_wrap = True
+                    sub_set = True
                     break
+            if not sub_set:
+                sub_box = slide.shapes.add_textbox(
+                    Inches(MARGIN_H),
+                    Inches(TITLE_BOX_TOP + TITLE_BOX_HEIGHT + 0.15),
+                    Inches(CONTENT_WIDTH),
+                    Inches(1.2),
+                )
+                sub_tf = sub_box.text_frame
+                sub_tf.word_wrap = True
+                sub_p = sub_tf.paragraphs[0]
+                sub_p.text = sub_display
+                self._apply_text_format(sub_p, size_name="subtitle", color_name="text_light")
 
         # 슬로건 (표지용, 선택)
         if slogan and slogan.strip():
@@ -240,7 +264,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -321,7 +345,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -467,7 +491,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -601,7 +625,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -702,7 +726,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -823,7 +847,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -903,7 +927,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -976,7 +1000,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -1062,7 +1086,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -1139,7 +1163,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -1272,7 +1296,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -1345,7 +1369,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -1478,7 +1502,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -1644,7 +1668,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -1775,7 +1799,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -1874,7 +1898,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -2038,7 +2062,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -2169,7 +2193,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 
@@ -2303,7 +2327,7 @@ class PPTXGenerator:
         try:
             slide_layout = self.prs.slide_layouts[layout_idx]
         except IndexError:
-            slide_layout = self.prs.slide_layouts[6]
+            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
 
         slide = self.prs.slides.add_slide(slide_layout)
 

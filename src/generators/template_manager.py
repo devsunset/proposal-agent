@@ -52,9 +52,9 @@ def _set_slide_dimensions_16_9(prs: Presentation) -> None:
     try:
         prs.slide_width = Inches(_SLIDE_WIDTH_INCHES)
         prs.slide_height = Inches(_SLIDE_HEIGHT_INCHES)
-        logger.info("슬라이드 크기 설정: %.2f x %.2f inch (16:9)", _SLIDE_WIDTH_INCHES, _SLIDE_HEIGHT_INCHES)
+        logger.info("슬라이드 크기 설정: {:.2f} x {:.2f} inch (16:9)", _SLIDE_WIDTH_INCHES, _SLIDE_HEIGHT_INCHES)
     except Exception as e:
-        logger.warning("슬라이드 크기 설정 실패: %s", e)
+        logger.warning("슬라이드 크기 설정 실패: {}", e)
 
 
 class TemplateManager:
@@ -318,6 +318,7 @@ class TemplateManager:
     def _find_guide_template(self) -> Optional[Path]:
         """
         templates 폴더 하위에서 '가이드' 또는 'guide'가 포함된 .pptx 파일을 찾음.
+        레이아웃이 가장 많은 템플릿을 우선 선택 (디자인 풍부도 기준).
         결과를 인스턴스에 캐시하여 반복 glob 방지.
         """
         if self._cached_guide_path is not None:
@@ -325,12 +326,27 @@ class TemplateManager:
         if not self.templates_dir.exists():
             return None
         keywords = ("가이드", "guide")
+        candidates = []
         for f in sorted(self.templates_dir.glob("*.pptx")):
             stem_lower = f.stem.lower()
             if any(kw in stem_lower or kw in f.stem for kw in keywords):
-                self._cached_guide_path = f
-                return f
-        return None
+                candidates.append(f)
+        if not candidates:
+            return None
+        # 레이아웃이 가장 많은 템플릿 우선 선택 (디자인 완성도 높음)
+        best: Optional[Path] = candidates[0]
+        best_count = 0
+        for f in candidates:
+            try:
+                n = len(Presentation(f).slide_layouts)
+                if n > best_count:
+                    best_count = n
+                    best = f
+            except Exception:
+                pass
+        self._cached_guide_path = best
+        logger.info("가이드 템플릿 선택: {} (레이아웃 {}개)", best.name if best else "없음", best_count)
+        return best
 
     def load_template(self, template_name: Optional[str] = "base_template") -> Presentation:
         """
@@ -371,6 +387,7 @@ class TemplateManager:
             self._clear_all_slides(prs)
             self._apply_design_from_presentation(prs)
             self._extract_layout_from_presentation(prs)
+            _set_slide_dimensions_16_9(prs)
             return prs
 
         guide_path = self._find_guide_template()
@@ -380,6 +397,7 @@ class TemplateManager:
             self._clear_all_slides(prs)
             self._apply_design_from_presentation(prs)
             self._extract_layout_from_presentation(prs)
+            _set_slide_dimensions_16_9(prs)
             return prs
 
         logger.info("기본 빈 프레젠테이션 생성 (templates 내 guide 포함 .pptx 없음)")
