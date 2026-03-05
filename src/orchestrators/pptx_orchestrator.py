@@ -174,12 +174,13 @@ class PPTXOrchestrator:
         """
         Phase 슬라이드 추가 (Impact-8 구조)
         """
-        # 섹션 구분자 슬라이드 (첫 슬라이드가 section_divider가 아닌 경우)
+        # 섹션 구분자 슬라이드 (Phase N: 제목 형식으로 통일)
         first_slide = phase.slides[0] if phase.slides else None
+        phase_title_display = f"Phase {phase.phase_number}: {phase.phase_title}"
         if not first_slide or first_slide.slide_type.value != "section_divider":
             self.generator.add_section_divider(
                 phase_number=phase.phase_number,
-                phase_title=phase.phase_title,
+                phase_title=phase_title_display,
                 phase_subtitle=phase.phase_subtitle or "",
             )
 
@@ -198,9 +199,12 @@ class PPTXOrchestrator:
         slide_type = slide.slide_type.value if slide.slide_type else "content"
 
         if slide_type == "section_divider":
+            title = (slide.title or "").strip()
+            if phase_number and phase_number > 0 and not title.lower().startswith("phase "):
+                title = f"Phase {phase_number}: {title}" if title else f"Phase {phase_number}"
             self.generator.add_section_divider(
                 phase_number=phase_number or 0,
-                phase_title=slide.title,
+                phase_title=title,
                 phase_subtitle=slide.subtitle or "",
                 notes=slide.notes or "",
             )

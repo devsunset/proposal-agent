@@ -34,25 +34,42 @@ from ..utils.logger import get_logger
 
 logger = get_logger("pptx_generator")
 
-# 슬라이드 내 텍스트 영역 한계 (범위 이탈·겹침 방지)
-# 제목-본문 겹침 방지: 제목 영역·간격 넉넉히 확보
-SLIDE_WIDTH_INCHES = 13.33
-SLIDE_HEIGHT_INCHES = 7.5
-MARGIN_H = 0.5
-MARGIN_TOP = 0.35
-CONTENT_WIDTH = SLIDE_WIDTH_INCHES - 2 * MARGIN_H  # 12.33
-KEY_MSG_TOP = 6.1
-KEY_MSG_HEIGHT = 0.85
-TITLE_BOX_TOP = MARGIN_TOP
-TITLE_BOX_HEIGHT = 1.6   # 2줄 제목 + 줄간격 여유 (겹침 방지)
-TITLE_TO_BODY_GAP = 0.2   # 제목과 본문 사이 여백
-BODY_BOX_TOP = TITLE_BOX_TOP + TITLE_BOX_HEIGHT + TITLE_TO_BODY_GAP
-BODY_BOX_HEIGHT = KEY_MSG_TOP - BODY_BOX_TOP - 0.1  # 키메시지와 간격 유지
+# =============================================================================
+# guide_template.pptx 기준 슬라이드 레이아웃 상수 (10.00" × 5.625")
+# =============================================================================
+SLIDE_WIDTH_INCHES = 10.00
+SLIDE_HEIGHT_INCHES = 5.625
+MARGIN_H = 0.36          # 좌우 여백 (guide_template 기준)
+MARGIN_TOP = 0.35        # 상단 여백
+CONTENT_WIDTH = SLIDE_WIDTH_INCHES - 2 * MARGIN_H   # 9.28"
+
+# 제목 영역 (guide_template: 제목 y=0.35, 18pt 1줄 → h=0.45)
+TITLE_BOX_TOP = 0.35
+TITLE_BOX_HEIGHT = 0.45
+
+# 부제목 바 영역 (guide_template: y=0.81, h=0.22)
+SUBTITLE_BOX_TOP = 0.81
+SUBTITLE_BOX_HEIGHT = 0.25
+
+# 장식 선 영역 (guide_template: y=1.34, h=0.23)
+DECO_LINE_TOP = 1.34
+DECO_LINE_HEIGHT = 0.23
+
+# 본문 영역 (guide_template: y=1.60 시작)
+BODY_BOX_TOP = 1.60
+KEY_MSG_TOP = 4.85
+KEY_MSG_HEIGHT = 0.40
+BODY_BOX_HEIGHT = KEY_MSG_TOP - BODY_BOX_TOP - 0.1  # ≈3.15"
+
+# 슬라이드 번호 영역 (guide_template: y=5.36, h=0.19)
+SLIDE_NUM_TOP = 5.36
+SLIDE_NUM_LEFT = 7.40
+
 MAX_TITLE_CHARS = 80
 MAX_BULLET_CHARS = 280
 MAX_KEY_MSG_CHARS = 120
 MAX_BULLETS_PER_SLIDE = 10
-MAX_TABLE_CELL_CHARS = 100
+MAX_TABLE_CELL_CHARS = 80
 
 
 def _truncate(text: str, max_chars: int, suffix: str = "…") -> str:
@@ -65,20 +82,21 @@ def _truncate(text: str, max_chars: int, suffix: str = "…") -> str:
     return s[: max_chars - len(suffix)].rstrip() + suffix
 
 
-# Modern 스타일 색상 상수
+# guide_template.pptx 기준 색상 상수
 STYLE_COLORS = {
-    "primary": RGBColor(0, 44, 95),        # #002C5F - 다크 블루
-    "secondary": RGBColor(0, 170, 210),    # #00AAD2 - 스카이 블루
-    "accent": RGBColor(230, 51, 18),       # #E63312 - 레드
-    "teal": RGBColor(0, 161, 156),         # #00A19C - 청록색
-    "dark_bg": RGBColor(26, 26, 26),       # #1A1A1A - 다크 배경
-    "dark_blue": RGBColor(0, 44, 95),      # 별칭
-    "sky_blue": RGBColor(0, 170, 210),     # 별칭
+    "primary": RGBColor(0x14, 0x30, 0x7F),    # #14307F 메인 네이비 (accent1)
+    "secondary": RGBColor(0x4C, 0x66, 0x86),  # #4C6686 미드 블루그레이 (accent2)
+    "accent": RGBColor(0xBD, 0x24, 0x39),     # #BD2439 레드 강조 (accent4)
+    "teal": RGBColor(0x00, 0x86, 0x82),       # #008682 청록색 (accent3)
+    "dark_bg": RGBColor(0x1B, 0x2C, 0x59),   # #1B2C59 다크 네이비 (accent5)
+    "dark_blue": RGBColor(0x14, 0x30, 0x7F),  # 별칭
+    "sky_blue": RGBColor(0x9E, 0xB2, 0xCA),   # #9EB2CA 라이트 블루 (accent6)
+    "section_dark": RGBColor(0x1B, 0x2C, 0x5A),  # #1B2C5A 섹션 다크 패널
     "white": RGBColor(255, 255, 255),
-    "light": RGBColor(245, 245, 245),      # #F5F5F5 - 밝은 회색
-    "text_dark": RGBColor(51, 51, 51),
-    "text_light": RGBColor(153, 153, 153),
-    "text_gray": RGBColor(102, 102, 102),  # #666666
+    "light": RGBColor(0xDA, 0xDA, 0xDA),      # #DADADA 라이트 그레이
+    "text_dark": RGBColor(0x22, 0x22, 0x22),  # #222222
+    "text_light": RGBColor(0x4C, 0x66, 0x86), # #4C6686
+    "text_gray": RGBColor(0x66, 0x66, 0x66),  # #666666
 }
 
 
@@ -104,6 +122,44 @@ class PPTXGenerator:
         safe_idx = min(max(0, layout_idx), n - 1) if n else fallback_index
         return self.prs.slide_layouts[safe_idx]
 
+    def _add_slide(self, layout):
+        """
+        슬라이드 추가 후 레이아웃의 플레이스홀더를 자동 제거.
+        '제목을 추가하려면 클릭하십시오', '부제목을 입력하십시오' 등
+        기본 안내 텍스트가 생성된 PPTX에 노출되지 않도록 처리.
+        """
+        slide = self.prs.slides.add_slide(layout)
+        try:
+            for ph in list(slide.placeholders):
+                elem = ph._element
+                parent = elem.getparent()
+                if parent is not None:
+                    parent.remove(elem)
+        except Exception:
+            pass
+        return slide
+
+    def _get_layout(self, name: str, fallback_idx: int = 0):
+        """
+        이름으로 레이아웃 검색 (모든 슬라이드 마스터 탐색).
+        guide_template.pptx는 Master[21]에 레이아웃이 있어 이 메서드 필요.
+        없으면 prs.slide_layouts[fallback_idx] 사용.
+
+        주요 레이아웃 이름 (guide_template.pptx Master[21]):
+          "1_cover_02"  → 표지 슬라이드
+          "3_cover_02"  → 섹션 구분 (다크 왼쪽 패널)
+          "Title and Content_02"            → 일반 콘텐츠
+          "Title and Content_02 (타이틀2줄)" → 2줄 제목 콘텐츠
+          "agenda (Print)"                  → 목차
+          "last page"                       → 마지막 페이지
+        """
+        layout = self.template_manager.get_slide_layout_by_name(self.prs, name)
+        if layout is not None:
+            return layout
+        n = len(self.prs.slide_layouts)
+        safe_idx = min(fallback_idx, n - 1) if n > 0 else 0
+        return self.prs.slide_layouts[safe_idx]
+
     def add_title_slide(
         self,
         title: str,
@@ -112,78 +168,99 @@ class PPTXGenerator:
         slogan: Optional[str] = None,
     ) -> None:
         """
-        타이틀 슬라이드 추가
-
-        Args:
-            title: 제목
-            subtitle: 부제목
-            is_part_divider: Part 구분자 슬라이드 여부
-            slogan: 슬로건/한 줄 메시지 (표지용, 선택)
+        표지 슬라이드 (guide_template 1_cover_02 스타일).
+        - 상단 네이비 이미지 영역: (0.36, 0.25) 9.29 × 3.03
+        - 제목: (0.26, 3.63) 9.09 × 0.50, 30pt Bold, 네이비
+        - 부제목: (0.26, 4.16) 9.09 × 0.30, 15pt
+        - 슬로건/태그라인: (0.26, 4.60)
         """
-        layout_name = "section" if is_part_divider else "title"
-        layout_idx = self.template_manager.get_layout_index(layout_name)
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[0]
-
-        slide = self.prs.slides.add_slide(slide_layout)
-
-        # 제목 설정 (길이 제한으로 범위 이탈 방지)
-        title_set = False
-        if slide.shapes.title:
-            title_shape = slide.shapes.title
-            title_shape.text = _truncate(title, 100)
-            tf = title_shape.text_frame
-            if tf.paragraphs:
-                self._apply_title_format(
-                    tf.paragraphs[0],
-                    size_name="part_title" if is_part_divider else "cover_title",
-                )
-            tf.word_wrap = True
-            title_set = True
-
-        # 제목 플레이스홀더가 없으면 텍스트박스로 대체
-        if not title_set:
-            self._add_title_textbox(
-                slide,
-                _truncate(title, 100),
-                size_name="part_title" if is_part_divider else "cover_title",
+        if is_part_divider:
+            # Part 구분자 → section_divider 스타일 재사용
+            self.add_section_divider(
+                phase_number=0,
+                phase_title=_truncate(title, 100),
+                phase_subtitle=subtitle or "",
             )
+            return
 
-        # 부제목 설정 (placeholder idx=1이 없으면 텍스트박스 대체)
-        if subtitle:
-            sub_display = _truncate(subtitle, 150)
-            sub_set = False
-            for shape in slide.placeholders:
-                if shape.placeholder_format.idx == 1:
-                    shape.text = sub_display
-                    if shape.text_frame.paragraphs:
-                        self._apply_text_format(
-                            shape.text_frame.paragraphs[0],
-                            size_name="subtitle",
-                            color_name="text_light",
-                        )
-                    shape.text_frame.word_wrap = True
-                    sub_set = True
-                    break
-            if not sub_set:
-                sub_box = slide.shapes.add_textbox(
-                    Inches(MARGIN_H),
-                    Inches(TITLE_BOX_TOP + TITLE_BOX_HEIGHT + 0.15),
-                    Inches(CONTENT_WIDTH),
-                    Inches(1.2),
-                )
-                sub_tf = sub_box.text_frame
-                sub_tf.word_wrap = True
-                sub_p = sub_tf.paragraphs[0]
-                sub_p.text = sub_display
-                self._apply_text_format(sub_p, size_name="subtitle", color_name="text_light")
+        # 표지 레이아웃 (1_cover_02 우선, 없으면 cover_01, 없으면 첫 레이아웃)
+        slide_layout = self._get_layout("1_cover_02") or self._get_layout("cover_01") or self.prs.slide_layouts[0]
+        slide = self._add_slide(slide_layout)
 
-        # 슬로건 (표지용, 선택)
+        # 상단 헤더 이미지 영역 (네이비 배경 직사각형)
+        header_rect = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(0.36), Inches(0.25),
+            Inches(9.29), Inches(3.03),
+        )
+        header_rect.fill.solid()
+        header_rect.fill.fore_color.rgb = STYLE_COLORS["primary"]
+        header_rect.line.fill.background()
+
+        # 헤더 내 슬로건 또는 브랜드 태그라인 (선택)
         if slogan and slogan.strip():
-            self._add_key_message(slide, _truncate(slogan.strip(), MAX_KEY_MSG_CHARS))
+            slogan_box = slide.shapes.add_textbox(
+                Inches(0.60), Inches(1.40),
+                Inches(8.80), Inches(0.80),
+            )
+            slogan_tf = slogan_box.text_frame
+            slogan_tf.word_wrap = True
+            slogan_p = slogan_tf.paragraphs[0]
+            slogan_p.text = _truncate(slogan.strip(), 120)
+            slogan_p.font.name = self.template_manager.get_font_name("title")
+            slogan_p.font.size = Pt(20)
+            slogan_p.font.bold = False
+            slogan_p.font.color.rgb = STYLE_COLORS["sky_blue"]
+            slogan_p.alignment = PP_ALIGN.LEFT
+
+        # 제목 텍스트 (30pt Bold, 네이비)
+        title_box = slide.shapes.add_textbox(
+            Inches(0.26), Inches(3.55),
+            Inches(9.09), Inches(0.65),
+        )
+        title_tf = title_box.text_frame
+        title_tf.word_wrap = True
+        title_p = title_tf.paragraphs[0]
+        title_p.text = _truncate(title, 100)
+        title_p.font.name = self.template_manager.get_font_name("title")
+        title_p.font.size = Pt(30)
+        title_p.font.bold = True
+        title_p.font.color.rgb = STYLE_COLORS["primary"]
+
+        # 하단 구분선 (라이트 그레이)
+        sep_line = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(0.26), Inches(4.10),
+            Inches(9.09), Inches(0.02),
+        )
+        sep_line.fill.solid()
+        sep_line.fill.fore_color.rgb = STYLE_COLORS["light"]
+        sep_line.line.fill.background()
+
+        # 부제목 텍스트 (15pt, 미드 블루그레이)
+        if subtitle:
+            sub_box = slide.shapes.add_textbox(
+                Inches(0.26), Inches(4.16),
+                Inches(9.09), Inches(0.40),
+            )
+            sub_tf = sub_box.text_frame
+            sub_tf.word_wrap = True
+            sub_p = sub_tf.paragraphs[0]
+            sub_p.text = _truncate(subtitle, 150)
+            sub_p.font.name = self.template_manager.get_font_name("body")
+            sub_p.font.size = Pt(15)
+            sub_p.font.color.rgb = STYLE_COLORS["secondary"]
+
+        # 저작권/회사명 (하단, 작은 텍스트)
+        copy_box = slide.shapes.add_textbox(
+            Inches(0.26), Inches(5.08),
+            Inches(4.34), Inches(0.25),
+        )
+        copy_tf = copy_box.text_frame
+        copy_p = copy_tf.paragraphs[0]
+        copy_p.font.name = self.template_manager.get_font_name("body")
+        copy_p.font.size = Pt(8)
+        copy_p.font.color.rgb = STYLE_COLORS["text_gray"]
 
     def add_content_slide(
         self,
@@ -195,22 +272,28 @@ class PPTXGenerator:
         layout_hint: Optional[str] = None,
     ) -> None:
         """
-        콘텐츠 슬라이드 추가 (blank 레이아웃 + 고정 영역으로 범위 이탈·겹침 방지)
+        콘텐츠 슬라이드 (guide_template "Title and Content_02" 스타일).
+        - 상단 제목 바: (0.36, 0.35) 9.09 × 0.45, 18pt Bold, 네이비
+        - 부제목 바: (0.36, 0.81) 9.09 × 0.25, 15pt, 미드 블루그레이
+        - 장식 선: (0.36, 1.34) 가로 라인
+        - 본문: (0.36, 1.60) 9.28 × 3.15
+        - 핵심 메시지 바: (0.36, 4.85) 하단
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-        slide = self.prs.slides.add_slide(slide_layout)
+        # "Title and Content_02" 레이아웃 우선, 없으면 blank 레이아웃
+        slide_layout = self._get_layout("Title and Content_02", fallback_idx=0)
+        slide = self._add_slide(slide_layout)
 
-        # 제목 영역 (한 줄 또는 두 줄, 콘텐츠 슬라이드는 subtitle 크기로 겹침 방지)
-        title_display = _truncate(title, MAX_TITLE_CHARS)
+        # 제목 영역
+        self._add_content_title(slide, _truncate(title, MAX_TITLE_CHARS))
+
+        # 부제목 (있으면)
         if subtitle and str(subtitle).strip():
-            title_display += "\n" + _truncate(str(subtitle).strip(), MAX_TITLE_CHARS)
-        self._add_title_textbox(slide, title_display, size_name="subtitle")
+            self._add_content_subtitle(slide, _truncate(str(subtitle).strip(), 100))
 
-        # 본문 영역 (고정 높이, word_wrap, 불릿 수·길이 제한)
+        # 장식 선 (네이비 얇은 수평 라인)
+        self._add_deco_line(slide)
+
+        # 본문 영역 (불릿 리스트)
         bullets_to_show = (bullets or [])[:MAX_BULLETS_PER_SLIDE]
         if bullets_to_show:
             body_box = slide.shapes.add_textbox(
@@ -223,17 +306,23 @@ class PPTXGenerator:
             tf.word_wrap = True
             for i, bullet in enumerate(bullets_to_show):
                 p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-                p.text = _truncate(bullet.text, MAX_BULLET_CHARS)
-                p.level = min(bullet.level, 2)
+                indent = "  " * min(bullet.level, 2)
+                bullet_char = "•" if bullet.level == 0 else "–"
+                p.text = f"{indent}{bullet_char} {_truncate(bullet.text, MAX_BULLET_CHARS)}"
                 p.font.name = self.template_manager.get_font_name("body")
-                p.font.size = self.template_manager.get_font_size("body")
+                # 레벨에 따라 폰트 크기 차등 적용
+                if bullet.level == 0:
+                    p.font.size = self.template_manager.get_font_size("body")   # 12pt
+                else:
+                    p.font.size = self.template_manager.get_font_size("small")  # 10pt
                 p.font.bold = bullet.emphasis
                 if bullet.emphasis:
                     p.font.color.rgb = self.template_manager.get_color("primary")
                 else:
                     p.font.color.rgb = self.template_manager.get_color("text_dark")
+                p.space_after = Pt(4)
 
-        # 핵심 메시지 (하단, 길이 제한)
+        # 핵심 메시지 바 (하단)
         if key_message:
             self._add_key_message(slide, _truncate(key_message, MAX_KEY_MSG_CHARS))
 
@@ -259,14 +348,8 @@ class PPTXGenerator:
             highlight_rows: 강조할 행 인덱스
             notes: 발표자 노트
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 제목 추가
         self._add_title_textbox(slide, title)
@@ -276,11 +359,13 @@ class PPTXGenerator:
         cols_count = len(headers)
         if rows_count < 2 or cols_count < 1:
             return
-        table_max_height = KEY_MSG_TOP - BODY_BOX_TOP - 0.1
+        table_max_height = KEY_MSG_TOP - BODY_BOX_TOP - 0.15
+        row_height_inch = 0.28
+        table_height = min(row_height_inch * rows_count, table_max_height)
         left = Inches(MARGIN_H)
         top = Inches(BODY_BOX_TOP)
         width = Inches(CONTENT_WIDTH)
-        height = Inches(min(0.4 * rows_count, table_max_height))
+        height = Inches(table_height)
 
         table = slide.shapes.add_table(
             rows_count, cols_count, left, top, width, height
@@ -340,14 +425,8 @@ class PPTXGenerator:
             right_bullets: 오른쪽 열 불릿
             notes: 발표자 노트
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         self._add_title_textbox(slide, _truncate(title, MAX_TITLE_CHARS))
 
@@ -381,7 +460,7 @@ class PPTXGenerator:
     def _add_title_textbox(
         self, slide, title: str, size_name: str = "slide_title"
     ) -> None:
-        """슬라이드에 제목 텍스트박스 추가 (word_wrap, 다중 단락). size_name으로 콘텐츠 슬라이드 제목은 'subtitle' 권장."""
+        """슬라이드에 제목 텍스트박스 추가 (guide_template 기준, word_wrap)."""
         textbox = slide.shapes.add_textbox(
             Inches(MARGIN_H),
             Inches(TITLE_BOX_TOP),
@@ -396,24 +475,73 @@ class PPTXGenerator:
             p.text = line.strip()
             self._apply_title_format(p, size_name=size_name)
 
-    def _add_key_message(self, slide, message: str) -> None:
-        """슬라이드 하단에 핵심 메시지 추가 (고정 영역, word_wrap)"""
-        if not (message or "").strip():
-            return
+    def _add_content_title(self, slide, title: str) -> None:
+        """콘텐츠 슬라이드 제목 바 (guide_template: 18pt Bold, 네이비, y=0.35)."""
         textbox = slide.shapes.add_textbox(
-            Inches(MARGIN_H),
-            Inches(KEY_MSG_TOP),
-            Inches(CONTENT_WIDTH),
-            Inches(KEY_MSG_HEIGHT),
+            Inches(MARGIN_H), Inches(TITLE_BOX_TOP),
+            Inches(CONTENT_WIDTH), Inches(TITLE_BOX_HEIGHT),
         )
         tf = textbox.text_frame
         tf.word_wrap = True
         p = tf.paragraphs[0]
-        p.text = f">> {(message or '').strip()}"
-        p.font.name = self.template_manager.get_font_name("body")
-        p.font.size = self.template_manager.get_font_size("small")
+        p.text = title
+        p.font.name = self.template_manager.get_font_name("title")
+        p.font.size = Pt(18)
         p.font.bold = True
-        p.font.color.rgb = self.template_manager.get_color("accent")
+        p.font.color.rgb = STYLE_COLORS["primary"]
+
+    def _add_content_subtitle(self, slide, subtitle: str) -> None:
+        """콘텐츠 슬라이드 부제목 바 (guide_template: 15pt SemiBold, y=0.81)."""
+        textbox = slide.shapes.add_textbox(
+            Inches(MARGIN_H), Inches(SUBTITLE_BOX_TOP),
+            Inches(CONTENT_WIDTH), Inches(SUBTITLE_BOX_HEIGHT),
+        )
+        tf = textbox.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = subtitle
+        p.font.name = self.template_manager.get_font_name("body")
+        p.font.size = Pt(15)
+        p.font.bold = False
+        p.font.color.rgb = STYLE_COLORS["secondary"]
+
+    def _add_deco_line(self, slide) -> None:
+        """장식 수평 라인 (guide_template: y=1.34, 네이비, 얇은 사각형)."""
+        line_shape = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(MARGIN_H), Inches(DECO_LINE_TOP),
+            Inches(CONTENT_WIDTH), Inches(0.02),
+        )
+        line_shape.fill.solid()
+        line_shape.fill.fore_color.rgb = STYLE_COLORS["primary"]
+        line_shape.line.fill.background()
+
+    def _add_key_message(self, slide, message: str) -> None:
+        """슬라이드 하단 핵심 메시지 바 (guide_template 기준: y=4.85, 네이비 배경)."""
+        if not (message or "").strip():
+            return
+        # 배경 바 (네이비)
+        bg = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(MARGIN_H), Inches(KEY_MSG_TOP),
+            Inches(CONTENT_WIDTH), Inches(KEY_MSG_HEIGHT),
+        )
+        bg.fill.solid()
+        bg.fill.fore_color.rgb = STYLE_COLORS["primary"]
+        bg.line.fill.background()
+        # 텍스트
+        textbox = slide.shapes.add_textbox(
+            Inches(MARGIN_H + 0.15), Inches(KEY_MSG_TOP + 0.05),
+            Inches(CONTENT_WIDTH - 0.3), Inches(KEY_MSG_HEIGHT - 0.10),
+        )
+        tf = textbox.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = (message or "").strip()
+        p.font.name = self.template_manager.get_font_name("body")
+        p.font.size = Pt(10)
+        p.font.bold = True
+        p.font.color.rgb = STYLE_COLORS["white"]
         p.alignment = PP_ALIGN.LEFT
 
     def _apply_title_format(self, paragraph, size_name: str = "slide_title") -> None:
@@ -432,12 +560,18 @@ class PPTXGenerator:
         paragraph.font.color.rgb = self.template_manager.get_color(color_name)
 
     def _format_table_cell(self, cell, is_header: bool = False) -> None:
-        """테이블 셀 포맷 적용 (줄바꿈으로 범위 이탈 방지)"""
+        """테이블 셀 포맷 적용 (줄바꿈·작은 폰트·내부 여백으로 셀 안에 수납)"""
         cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-        cell.text_frame.word_wrap = True
+        tf = cell.text_frame
+        tf.word_wrap = True
+        margin_emu = int(0.02 * 914400)
+        tf.margin_left = margin_emu
+        tf.margin_right = margin_emu
+        tf.margin_top = margin_emu
+        tf.margin_bottom = margin_emu
 
-        for paragraph in cell.text_frame.paragraphs:
-            paragraph.font.size = Pt(11)
+        for paragraph in tf.paragraphs:
+            paragraph.font.size = Pt(9) if not is_header else Pt(10)
             paragraph.font.name = self.template_manager.get_font_name("body")
             paragraph.font.bold = is_header
             paragraph.alignment = PP_ALIGN.CENTER
@@ -486,22 +620,16 @@ class PPTXGenerator:
             columns: [{"title": "열1", "content": "내용", "icon": "★"}, ...]
             notes: 발표자 노트
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         self._add_title_textbox(slide, _truncate(title, MAX_TITLE_CHARS))
 
-        col_width = 3.8
-        col_height = min(4.5, KEY_MSG_TOP - BODY_BOX_TOP - 0.1)
-        left_start = MARGIN_H + 0.2
+        col_width = (CONTENT_WIDTH - 0.40) / 3  # 3열 균등 배분
+        col_height = min(3.0, KEY_MSG_TOP - BODY_BOX_TOP - 0.1)
+        left_start = MARGIN_H
         top = BODY_BOX_TOP
-        gap = 0.3
+        gap = 0.20
 
         for i, col in enumerate(columns[:3]):
             left = left_start + i * (col_width + gap)
@@ -620,24 +748,18 @@ class PPTXGenerator:
             stats: [{"value": "95%", "label": "만족도", "description": "목표 대비 +5%"}, ...]
             notes: 발표자 노트
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 메인 제목
         self._add_title_textbox(slide, title)
 
         # 통계 카드들
         num_stats = min(len(stats), 4)
-        total_width = 12.0
+        total_width = CONTENT_WIDTH - 0.10
         card_width = total_width / num_stats
-        left_start = 0.67
-        top = 2.2
+        left_start = MARGIN_H
+        top = BODY_BOX_TOP
 
         for i, stat in enumerate(stats[:4]):
             left = left_start + i * card_width
@@ -721,25 +843,19 @@ class PPTXGenerator:
             columns: 열 개수 (3 또는 4)
             notes: 발표자 노트
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 메인 제목
         self._add_title_textbox(slide, title)
 
         # 그리드 아이템
-        total_width = 12.0
-        margin = 0.25
+        total_width = CONTENT_WIDTH - 0.10
+        margin = 0.18
         item_width = (total_width - margin * (columns + 1)) / columns
-        item_height = 1.8
-        left_start = 0.67
-        top = 1.8
+        item_height = 1.35
+        left_start = MARGIN_H
+        top = BODY_BOX_TOP
 
         for i, item in enumerate(items[:columns * 2]):  # 최대 2행
             row = i // columns
@@ -842,14 +958,8 @@ class PPTXGenerator:
             author: 작성자 정보
             notes: 발표자 노트
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 메인 제목
         self._add_title_textbox(slide, title)
@@ -857,10 +967,10 @@ class PPTXGenerator:
         # 큰 따옴표 배경 (슬라이드 내 범위)
         quote_bg = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE,
-            Inches(MARGIN_H + 0.5),
-            Inches(1.8),
-            Inches(CONTENT_WIDTH - 1.0),
-            Inches(3.2),
+            Inches(MARGIN_H + 0.30),
+            Inches(BODY_BOX_TOP),
+            Inches(CONTENT_WIDTH - 0.60),
+            Inches(2.40),
         )
         quote_bg.fill.solid()
         quote_bg.fill.fore_color.rgb = self.template_manager.get_color("background_light")
@@ -869,10 +979,10 @@ class PPTXGenerator:
         # 인용문 (길이 제한, word_wrap)
         quote_display = _truncate(quote, 400)
         quote_box = slide.shapes.add_textbox(
-            Inches(MARGIN_H + 0.8),
-            Inches(2.0),
-            Inches(CONTENT_WIDTH - 1.6),
-            Inches(2.4),
+            Inches(MARGIN_H + 0.40),
+            Inches(BODY_BOX_TOP + 0.15),
+            Inches(CONTENT_WIDTH - 0.80),
+            Inches(1.80),
         )
         quote_tf = quote_box.text_frame
         quote_tf.word_wrap = True
@@ -915,71 +1025,57 @@ class PPTXGenerator:
         self,
         headline: str,
         subheadline: str = "",
-        background_color: str = "dark_blue",
+        background_color: str = "dark_bg",
         notes: str = "",
     ):
         """
-        티저/HOOK 슬라이드 - 임팩트 있는 오프닝
-        Modern 스타일: 다크 배경, 큰 타이포그래피
+        티저/HOOK 슬라이드 (guide_template 기준 크기, 다크 배경).
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("3_cover_02", fallback_idx=0)
+        slide = self._add_slide(slide_layout)
 
         # 다크 배경 (슬라이드 전체)
         bg = slide.shapes.add_shape(
             MSO_SHAPE.RECTANGLE,
-            Inches(0),
-            Inches(0),
-            Inches(SLIDE_WIDTH_INCHES),
-            Inches(SLIDE_HEIGHT_INCHES),
+            Inches(0), Inches(0),
+            Inches(SLIDE_WIDTH_INCHES), Inches(SLIDE_HEIGHT_INCHES),
         )
         bg.fill.solid()
-        bg.fill.fore_color.rgb = STYLE_COLORS.get(background_color, STYLE_COLORS["dark_blue"])
+        bg.fill.fore_color.rgb = STYLE_COLORS.get(background_color, STYLE_COLORS["dark_bg"])
         bg.line.fill.background()
 
-        # 메인 헤드라인 (길이 제한, word_wrap)
+        # 메인 헤드라인
         headline_display = _truncate(headline, 120)
         headline_box = slide.shapes.add_textbox(
-            Inches(MARGIN_H),
-            Inches(2.2),
-            Inches(CONTENT_WIDTH),
-            Inches(2.0),
+            Inches(MARGIN_H), Inches(1.60),
+            Inches(CONTENT_WIDTH), Inches(1.50),
         )
         headline_tf = headline_box.text_frame
         headline_tf.word_wrap = True
         headline_p = headline_tf.paragraphs[0]
         headline_p.text = headline_display
         headline_p.font.name = self.template_manager.get_font_name("title")
-        headline_p.font.size = Pt(44)
+        headline_p.font.size = Pt(30)
         headline_p.font.bold = True
-        headline_p.font.color.rgb = RGBColor(255, 255, 255)
+        headline_p.font.color.rgb = STYLE_COLORS["white"]
         headline_p.alignment = PP_ALIGN.CENTER
 
         # 서브 헤드라인
         if subheadline:
             sub_display = _truncate(subheadline, 200)
             sub_box = slide.shapes.add_textbox(
-                Inches(MARGIN_H),
-                Inches(4.3),
-                Inches(CONTENT_WIDTH),
-                Inches(1.2),
+                Inches(MARGIN_H), Inches(3.20),
+                Inches(CONTENT_WIDTH), Inches(0.90),
             )
             sub_tf = sub_box.text_frame
             sub_tf.word_wrap = True
             sub_p = sub_tf.paragraphs[0]
             sub_p.text = sub_display
             sub_p.font.name = self.template_manager.get_font_name("body")
-            sub_p.font.size = Pt(20)
+            sub_p.font.size = Pt(15)
             sub_p.font.color.rgb = STYLE_COLORS["sky_blue"]
             sub_p.alignment = PP_ALIGN.CENTER
 
-        # 발표자 노트 추가
         if notes:
             notes_slide = slide.notes_slide
             notes_slide.notes_text_frame.text = notes
@@ -992,81 +1088,92 @@ class PPTXGenerator:
         notes: str = "",
     ):
         """
-        섹션 구분 슬라이드 - Phase 번호와 제목
-        Modern 스타일: 왼쪽에 큰 숫자, 오른쪽에 제목
+        섹션 구분 슬라이드 (guide_template 3_cover_02 스타일).
+        - 왼쪽 다크 네이비 패널: (0, 0) 4.43 × 5.625
+        - 섹션 번호: (0.49, 1.99) 15pt, 라이트 블루
+        - 섹션 제목: (0.49, 2.37) 3.64 × 1.30, 30pt Bold, 흰색
+        - 오른쪽: 흰색 배경 + 장식 요소
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
+        slide_layout = self._get_layout("3_cover_02", fallback_idx=0)
+        slide = self._add_slide(slide_layout)
 
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
+        LEFT_PANEL_W = 4.43
 
-        slide = self.prs.slides.add_slide(slide_layout)
-
-        # 다크 배경
-        bg = slide.shapes.add_shape(
+        # 왼쪽 다크 네이비 패널 (전체 높이)
+        left_panel = slide.shapes.add_shape(
             MSO_SHAPE.RECTANGLE,
-            Inches(0),
-            Inches(0),
-            Inches(SLIDE_WIDTH_INCHES),
-            Inches(SLIDE_HEIGHT_INCHES),
+            Inches(0), Inches(0),
+            Inches(LEFT_PANEL_W), Inches(SLIDE_HEIGHT_INCHES),
         )
-        bg.fill.solid()
-        bg.fill.fore_color.rgb = STYLE_COLORS["dark_blue"]
-        bg.line.fill.background()
+        left_panel.fill.solid()
+        left_panel.fill.fore_color.rgb = STYLE_COLORS["section_dark"]
+        left_panel.line.fill.background()
 
-        # Phase 번호 (큰 아웃라인 숫자)
+        # 섹션 번호 (예: "01", "02" ...)
+        num_str = f"{phase_number:02d}" if phase_number < 100 else str(phase_number)
         num_box = slide.shapes.add_textbox(
-            Inches(1.0),
-            Inches(2.0),
-            Inches(3.0),
-            Inches(3.0),
+            Inches(0.49), Inches(1.99),
+            Inches(3.64), Inches(0.35),
         )
         num_tf = num_box.text_frame
         num_p = num_tf.paragraphs[0]
-        num_p.text = f"0{phase_number}" if phase_number < 10 else str(phase_number)
+        num_p.text = num_str
         num_p.font.name = self.template_manager.get_font_name("title")
-        num_p.font.size = Pt(120)
-        num_p.font.bold = True
+        num_p.font.size = Pt(15)
+        num_p.font.bold = False
         num_p.font.color.rgb = STYLE_COLORS["sky_blue"]
-        num_p.alignment = PP_ALIGN.CENTER
 
-        # Phase 제목 (word_wrap, 길이 제한)
+        # 섹션 제목 (30pt Bold, 흰색)
         title_display = _truncate(phase_title, 80)
         title_box = slide.shapes.add_textbox(
-            Inches(4.2),
-            Inches(2.6),
-            Inches(8.0),
-            Inches(1.4),
+            Inches(0.49), Inches(2.37),
+            Inches(3.64), Inches(1.30),
         )
         title_tf = title_box.text_frame
         title_tf.word_wrap = True
         title_p = title_tf.paragraphs[0]
         title_p.text = title_display
         title_p.font.name = self.template_manager.get_font_name("title")
-        title_p.font.size = Pt(36)
+        title_p.font.size = Pt(30)
         title_p.font.bold = True
-        title_p.font.color.rgb = RGBColor(255, 255, 255)
+        title_p.font.color.rgb = STYLE_COLORS["white"]
 
-        # Phase 서브타이틀
+        # 섹션 부제목 (있으면, 15pt, 라이트 블루)
         if phase_subtitle:
-            sub_display = _truncate(phase_subtitle, 150)
+            sub_display = _truncate(phase_subtitle, 120)
             sub_box = slide.shapes.add_textbox(
-                Inches(4.2),
-                Inches(4.0),
-                Inches(8.0),
-                Inches(1.2),
+                Inches(0.49), Inches(3.80),
+                Inches(3.64), Inches(0.60),
             )
             sub_tf = sub_box.text_frame
             sub_tf.word_wrap = True
             sub_p = sub_tf.paragraphs[0]
             sub_p.text = sub_display
             sub_p.font.name = self.template_manager.get_font_name("body")
-            sub_p.font.size = Pt(18)
-            sub_p.font.color.rgb = RGBColor(180, 180, 180)
+            sub_p.font.size = Pt(13)
+            sub_p.font.color.rgb = STYLE_COLORS["sky_blue"]
 
-        # 발표자 노트 추가
+        # 오른쪽 패널: 흰색 배경 (왼쪽 패널 오른쪽)
+        right_panel = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(LEFT_PANEL_W), Inches(0),
+            Inches(SLIDE_WIDTH_INCHES - LEFT_PANEL_W), Inches(SLIDE_HEIGHT_INCHES),
+        )
+        right_panel.fill.solid()
+        right_panel.fill.fore_color.rgb = STYLE_COLORS["white"]
+        right_panel.line.fill.background()
+
+        # 오른쪽 장식: 라이트 블루 수평 라인
+        right_line = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(LEFT_PANEL_W + 0.40), Inches(2.60),
+            Inches(SLIDE_WIDTH_INCHES - LEFT_PANEL_W - 0.80), Inches(0.03),
+        )
+        right_line.fill.solid()
+        right_line.fill.fore_color.rgb = STYLE_COLORS["sky_blue"]
+        right_line.line.fill.background()
+
+        # 발표자 노트
         if notes:
             notes_slide = slide.notes_slide
             notes_slide.notes_text_frame.text = notes
@@ -1081,45 +1188,35 @@ class PPTXGenerator:
         """
         핵심 메시지 슬라이드 - 중앙 정렬된 임팩트 메시지
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
-
-        # 배경 (그라데이션 효과는 단색으로 대체)
+        # 배경 (다크 또는 라이트)
         if background_style == "dark":
             bg = slide.shapes.add_shape(
                 MSO_SHAPE.RECTANGLE,
-                Inches(0),
-                Inches(0),
-                Inches(13.33),
-                Inches(7.5),
+                Inches(0), Inches(0),
+                Inches(SLIDE_WIDTH_INCHES), Inches(SLIDE_HEIGHT_INCHES),
             )
             bg.fill.solid()
-            bg.fill.fore_color.rgb = STYLE_COLORS["dark_blue"]
+            bg.fill.fore_color.rgb = STYLE_COLORS["dark_bg"]
             bg.line.fill.background()
-            text_color = RGBColor(255, 255, 255)
+            text_color = STYLE_COLORS["white"]
         else:
-            text_color = STYLE_COLORS["dark_blue"]
+            text_color = STYLE_COLORS["primary"]
 
-        # 핵심 메시지 (길이 제한, word_wrap)
+        # 핵심 메시지 (guide_template 기준 크기)
         msg_display = _truncate(message, 200)
         msg_box = slide.shapes.add_textbox(
-            Inches(MARGIN_H),
-            Inches(2.2),
-            Inches(CONTENT_WIDTH),
-            Inches(2.4),
+            Inches(MARGIN_H), Inches(1.60),
+            Inches(CONTENT_WIDTH), Inches(1.80),
         )
         msg_tf = msg_box.text_frame
         msg_tf.word_wrap = True
         msg_p = msg_tf.paragraphs[0]
         msg_p.text = msg_display
         msg_p.font.name = self.template_manager.get_font_name("title")
-        msg_p.font.size = Pt(32)
+        msg_p.font.size = Pt(24)
         msg_p.font.bold = True
         msg_p.font.color.rgb = text_color
         msg_p.alignment = PP_ALIGN.CENTER
@@ -1128,17 +1225,15 @@ class PPTXGenerator:
         if supporting_text:
             sup_display = _truncate(supporting_text, 300)
             sup_box = slide.shapes.add_textbox(
-                Inches(MARGIN_H + 0.5),
-                Inches(4.8),
-                Inches(CONTENT_WIDTH - 1.0),
-                Inches(1.6),
+                Inches(MARGIN_H + 0.30), Inches(3.50),
+                Inches(CONTENT_WIDTH - 0.60), Inches(1.00),
             )
             sup_tf = sup_box.text_frame
             sup_tf.word_wrap = True
             sup_p = sup_tf.paragraphs[0]
             sup_p.text = sup_display
             sup_p.font.name = self.template_manager.get_font_name("body")
-            sup_p.font.size = Pt(18)
+            sup_p.font.size = Pt(14)
             sup_p.font.color.rgb = STYLE_COLORS["sky_blue"] if background_style == "dark" else STYLE_COLORS["text_gray"]
             sup_p.alignment = PP_ALIGN.CENTER
 
@@ -1158,14 +1253,8 @@ class PPTXGenerator:
         AS-IS / TO-BE 비교 슬라이드
         Modern 스타일: 좌우 분할, 시각적 대비
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         self._add_title_textbox(slide, _truncate(title, MAX_TITLE_CHARS))
 
@@ -1287,69 +1376,92 @@ class PPTXGenerator:
         notes: str = "",
     ):
         """
-        목차/인덱스 슬라이드
-        Modern 스타일: 깔끔한 번호 매기기, 현재 위치 강조
+        목차/인덱스 슬라이드 (guide_template "agenda (Print)" 스타일).
+        - 좌측 제목 헤더 영역
+        - 우측 항목 리스트 (번호 + 텍스트)
         """
         items = items or []
-        layout_idx = self.template_manager.get_layout_index("blank")
+        slide_layout = self._get_layout("agenda (Print)") or self._get_layout("agenda") or self._get_layout("Title and Content_02", 0)
+        slide = self._add_slide(slide_layout)
 
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
+        # 좌측 타이틀 영역 (네이비 배경)
+        left_bg = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE,
+            Inches(0), Inches(0),
+            Inches(3.20), Inches(SLIDE_HEIGHT_INCHES),
+        )
+        left_bg.fill.solid()
+        left_bg.fill.fore_color.rgb = STYLE_COLORS["primary"]
+        left_bg.line.fill.background()
 
-        slide = self.prs.slides.add_slide(slide_layout)
+        # 목차 타이틀 텍스트 (흰색, 세로 중앙)
+        toc_title_box = slide.shapes.add_textbox(
+            Inches(0.30), Inches(1.80),
+            Inches(2.60), Inches(1.20),
+        )
+        toc_title_tf = toc_title_box.text_frame
+        toc_title_tf.word_wrap = True
+        toc_title_p = toc_title_tf.paragraphs[0]
+        toc_title_p.text = title
+        toc_title_p.font.name = self.template_manager.get_font_name("title")
+        toc_title_p.font.size = Pt(24)
+        toc_title_p.font.bold = True
+        toc_title_p.font.color.rgb = STYLE_COLORS["white"]
 
-        # 메인 제목
-        self._add_title_textbox(slide, title)
-
-        # 목차 항목들
-        start_y = 1.8
-        for i, item in enumerate(items):
+        # 목차 항목들 (우측, y=0.40 시작, 간격 0.55)
+        start_y = 0.40
+        row_h = min(0.55, (SLIDE_HEIGHT_INCHES - start_y - 0.30) / max(len(items), 1))
+        for i, item in enumerate(items[:8]):
             is_current = (i == current_index)
+            item_top = start_y + i * row_h
 
-            # 번호 배경
+            # 번호 원형 배경
             num_bg = slide.shapes.add_shape(
                 MSO_SHAPE.OVAL,
-                Inches(1.0),
-                Inches(start_y + i * 0.8),
-                Inches(0.5),
-                Inches(0.5),
+                Inches(3.40), Inches(item_top + 0.05),
+                Inches(0.38), Inches(0.38),
             )
             num_bg.fill.solid()
-            num_bg.fill.fore_color.rgb = STYLE_COLORS["sky_blue"] if is_current else STYLE_COLORS["dark_blue"]
+            num_bg.fill.fore_color.rgb = STYLE_COLORS["accent"] if is_current else STYLE_COLORS["secondary"]
             num_bg.line.fill.background()
 
             # 번호
             num_box = slide.shapes.add_textbox(
-                Inches(1.0),
-                Inches(start_y + i * 0.8 + 0.08),
-                Inches(0.5),
-                Inches(0.4),
+                Inches(3.40), Inches(item_top + 0.07),
+                Inches(0.38), Inches(0.34),
             )
-            num_tf = num_box.text_frame
-            num_p = num_tf.paragraphs[0]
-            num_p.text = str(i + 1)
-            num_p.font.size = Pt(14)
+            num_p = num_box.text_frame.paragraphs[0]
+            num_p.text = f"{i + 1:02d}"
+            num_p.font.size = Pt(10)
             num_p.font.bold = True
-            num_p.font.color.rgb = RGBColor(255, 255, 255)
+            num_p.font.color.rgb = STYLE_COLORS["white"]
             num_p.alignment = PP_ALIGN.CENTER
 
             # 항목 텍스트
             item_box = slide.shapes.add_textbox(
-                Inches(1.7),
-                Inches(start_y + i * 0.8 + 0.05),
-                Inches(10.0),
-                Inches(0.5),
+                Inches(3.90), Inches(item_top + 0.05),
+                Inches(5.80), Inches(row_h),
             )
             item_tf = item_box.text_frame
+            item_tf.word_wrap = True
             item_p = item_tf.paragraphs[0]
-            item_p.text = item
-            item_p.font.size = Pt(18)
+            item_p.text = _truncate(str(item), 80)
+            item_p.font.size = Pt(14) if is_current else Pt(12)
             item_p.font.bold = is_current
-            item_p.font.color.rgb = STYLE_COLORS["dark_blue"] if is_current else STYLE_COLORS["text_gray"]
+            item_p.font.name = self.template_manager.get_font_name("body")
+            item_p.font.color.rgb = STYLE_COLORS["primary"] if is_current else STYLE_COLORS["text_dark"]
 
-        # 발표자 노트 추가
+            # 구분선 (각 항목 하단)
+            if i < len(items) - 1:
+                sep = slide.shapes.add_shape(
+                    MSO_SHAPE.RECTANGLE,
+                    Inches(3.40), Inches(item_top + row_h - 0.02),
+                    Inches(6.20), Inches(0.01),
+                )
+                sep.fill.solid()
+                sep.fill.fore_color.rgb = STYLE_COLORS["light"]
+                sep.line.fill.background()
+
         if notes:
             notes_slide = slide.notes_slide
             notes_slide.notes_text_frame.text = notes
@@ -1364,14 +1476,8 @@ class PPTXGenerator:
         콘텐츠 예시 슬라이드 - 마케팅/PR용
         Modern 스타일: 카드형 레이아웃, 이미지 플레이스홀더
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 메인 제목
         self._add_title_textbox(slide, title)
@@ -1381,7 +1487,7 @@ class PPTXGenerator:
         card_width = 3.8
         gap = 0.3
         total_width = num_cards * card_width + (num_cards - 1) * gap
-        start_x = (13.33 - total_width) / 2
+        start_x = (SLIDE_WIDTH_INCHES - total_width) / 2
 
         for i, example in enumerate(examples[:3]):
             x = start_x + i * (card_width + gap)
@@ -1471,7 +1577,7 @@ class PPTXGenerator:
             # 채널/해시태그
             channel_box = slide.shapes.add_textbox(
                 Inches(x + 0.15),
-                Inches(6.5),
+                Inches(KEY_MSG_TOP - 0.50),
                 Inches(card_width - 0.3),
                 Inches(0.4),
             )
@@ -1497,14 +1603,8 @@ class PPTXGenerator:
         채널 전략 슬라이드 - 채널별 역할/KPI
         Modern 스타일: 채널 아이콘, 역할, KPI 표시
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 메인 제목
         self._add_title_textbox(slide, title)
@@ -1514,7 +1614,7 @@ class PPTXGenerator:
         col_width = 2.9
         gap = 0.3
         total_width = num_channels * col_width + (num_channels - 1) * gap
-        start_x = (13.33 - total_width) / 2
+        start_x = (SLIDE_WIDTH_INCHES - total_width) / 2
 
         channel_colors = [
             STYLE_COLORS["dark_blue"],
@@ -1663,14 +1763,8 @@ class PPTXGenerator:
         캠페인 슬라이드 - 캠페인 개요 및 활동
         Modern 스타일: 헤더 배너, 활동 타임라인
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 메인 제목
         self._add_title_textbox(slide, title)
@@ -1680,7 +1774,7 @@ class PPTXGenerator:
             MSO_SHAPE.RECTANGLE,
             Inches(0.5),
             Inches(1.4),
-            Inches(12.33),
+            Inches(CONTENT_WIDTH),
             Inches(1.2),
         )
         header_bg.fill.solid()
@@ -1691,7 +1785,7 @@ class PPTXGenerator:
         campaign_box = slide.shapes.add_textbox(
             Inches(0.7),
             Inches(1.5),
-            Inches(7.0),
+            Inches(5.0),
             Inches(0.5),
         )
         campaign_tf = campaign_box.text_frame
@@ -1716,9 +1810,9 @@ class PPTXGenerator:
 
         # 목표
         obj_box = slide.shapes.add_textbox(
-            Inches(8.0),
+            Inches(6.0),
             Inches(1.55),
-            Inches(4.5),
+            Inches(3.60),
             Inches(0.9),
         )
         obj_tf = obj_box.text_frame
@@ -1763,7 +1857,7 @@ class PPTXGenerator:
             act_box = slide.shapes.add_textbox(
                 Inches(1.3),
                 Inches(activity_start_y + i * 0.75 + 0.05),
-                Inches(11.0),
+                Inches(8.25),
                 Inches(0.5),
             )
             act_tf = act_box.text_frame
@@ -1794,14 +1888,8 @@ class PPTXGenerator:
         예산 슬라이드 - 투자 비용 테이블
         Modern 스타일: 깔끔한 테이블, 총계 강조
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 메인 제목
         self._add_title_textbox(slide, title)
@@ -1814,7 +1902,7 @@ class PPTXGenerator:
             rows, cols,
             Inches(0.8),
             Inches(1.6),
-            Inches(11.73),
+            Inches(8.80),
             Inches(0.5 * rows),
         )
         table = table_shape.table
@@ -1893,14 +1981,8 @@ class PPTXGenerator:
         케이스 스터디 슬라이드 - 수행 실적
         Modern 스타일: 프로젝트 이미지 + 성과 KPI
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 메인 제목
         self._add_title_textbox(slide, title)
@@ -1910,7 +1992,7 @@ class PPTXGenerator:
             MSO_SHAPE.RECTANGLE,
             Inches(0.5),
             Inches(1.5),
-            Inches(6.5),
+            Inches(4.88),
             Inches(4.0),
         )
         img_placeholder.fill.solid()
@@ -1921,7 +2003,7 @@ class PPTXGenerator:
         icon_box = slide.shapes.add_textbox(
             Inches(0.5),
             Inches(3.2),
-            Inches(6.5),
+            Inches(4.88),
             Inches(0.5),
         )
         icon_tf = icon_box.text_frame
@@ -1935,7 +2017,7 @@ class PPTXGenerator:
         proj_box = slide.shapes.add_textbox(
             Inches(0.5),
             Inches(5.6),
-            Inches(6.5),
+            Inches(4.88),
             Inches(0.5),
         )
         proj_tf = proj_box.text_frame
@@ -1948,8 +2030,8 @@ class PPTXGenerator:
         # 클라이언트/기간
         info_box = slide.shapes.add_textbox(
             Inches(0.5),
-            Inches(6.1),
-            Inches(6.5),
+            Inches(4.57),
+            Inches(4.88),
             Inches(0.8),
         )
         info_tf = info_box.text_frame
@@ -1963,9 +2045,9 @@ class PPTXGenerator:
         # 오른쪽: 성과 KPI 영역
         kpi_bg = slide.shapes.add_shape(
             MSO_SHAPE.ROUNDED_RECTANGLE,
-            Inches(7.2),
+            Inches(5.4),
             Inches(1.5),
-            Inches(5.63),
+            Inches(4.22),
             Inches(5.5),
         )
         kpi_bg.fill.solid()
@@ -1974,7 +2056,7 @@ class PPTXGenerator:
 
         # 성과 제목
         result_title_box = slide.shapes.add_textbox(
-            Inches(7.4),
+            Inches(5.55),
             Inches(1.7),
             Inches(5.23),
             Inches(0.5),
@@ -1990,7 +2072,7 @@ class PPTXGenerator:
         kpis = case.get("kpis", case.get("results", []))
         for i, kpi in enumerate(kpis[:4]):
             kpi_box = slide.shapes.add_textbox(
-                Inches(7.4),
+                Inches(5.55),
                 Inches(2.4 + i * 1.2),
                 Inches(5.23),
                 Inches(1.0),
@@ -2021,8 +2103,8 @@ class PPTXGenerator:
         if desc:
             desc_box = slide.shapes.add_textbox(
                 Inches(0.5),
-                Inches(6.7),
-                Inches(12.33),
+                Inches(5.03),
+                Inches(CONTENT_WIDTH),
                 Inches(0.6),
             )
             desc_tf = desc_box.text_frame
@@ -2058,24 +2140,19 @@ class PPTXGenerator:
             kpis: [{"metric": "KPI명", "target": "목표값", "basis": "산출근거"}, ...]
             why_us_points: ["포인트1", "포인트2", ...]
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 왼쪽 액센트 바
         accent_bar = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.15), Inches(7.5)
+            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.15), Inches(SLIDE_HEIGHT_INCHES)
         )
         accent_bar.fill.solid()
         accent_bar.fill.fore_color.rgb = STYLE_COLORS["primary"]
         accent_bar.line.fill.background()
 
         # 타이틀
-        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.4), Inches(8), Inches(0.6))
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.4), Inches(6.0), Inches(0.6))
         title_p = title_box.text_frame.paragraphs[0]
         title_p.text = "EXECUTIVE SUMMARY"
         title_p.font.size = Pt(36)
@@ -2084,13 +2161,13 @@ class PPTXGenerator:
 
         # 프로젝트 목표
         obj_bg = slide.shapes.add_shape(
-            MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.5), Inches(1.2), Inches(12.3), Inches(0.6)
+            MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.5), Inches(1.2), Inches(9.23), Inches(0.6)
         )
         obj_bg.fill.solid()
         obj_bg.fill.fore_color.rgb = STYLE_COLORS["primary"]
         obj_bg.line.fill.background()
 
-        obj_box = slide.shapes.add_textbox(Inches(0.7), Inches(1.3), Inches(11.9), Inches(0.4))
+        obj_box = slide.shapes.add_textbox(Inches(0.7), Inches(1.3), Inches(8.93), Inches(0.4))
         obj_p = obj_box.text_frame.paragraphs[0]
         obj_p.text = project_objective
         obj_p.font.size = Pt(16)
@@ -2160,7 +2237,7 @@ class PPTXGenerator:
 
         # Why Us
         why_text = "  ".join([f"✓ {p}" for p in why_us_points[:4]])
-        why_box = slide.shapes.add_textbox(Inches(0.5), Inches(5.3), Inches(12.3), Inches(0.5))
+        why_box = slide.shapes.add_textbox(Inches(0.5), Inches(5.3), Inches(9.23), Inches(0.5))
         why_box.text_frame.word_wrap = True
         why_p = why_box.text_frame.paragraphs[0]
         why_p.text = why_text
@@ -2189,24 +2266,19 @@ class PPTXGenerator:
             call_to_action: ["10개월간 브랜드 인지도 +20%p 달성", ...]
             contact_info: {"name": "담당자명", "phone": "전화번호", "email": "이메일"}
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 왼쪽 액센트 바
         accent_bar = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.15), Inches(7.5)
+            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(0.15), Inches(SLIDE_HEIGHT_INCHES)
         )
         accent_bar.fill.solid()
         accent_bar.fill.fore_color.rgb = STYLE_COLORS["primary"]
         accent_bar.line.fill.background()
 
         # 타이틀
-        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.4), Inches(8), Inches(0.6))
+        title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.4), Inches(6.0), Inches(0.6))
         title_p = title_box.text_frame.paragraphs[0]
         title_p.text = "NEXT STEP"
         title_p.font.size = Pt(36)
@@ -2214,7 +2286,7 @@ class PPTXGenerator:
         title_p.font.color.rgb = STYLE_COLORS["primary"]
 
         # 헤드라인
-        headline_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.1), Inches(12), Inches(0.5))
+        headline_box = slide.shapes.add_textbox(Inches(0.5), Inches(1.1), Inches(9.0), Inches(0.5))
         headline_p = headline_box.text_frame.paragraphs[0]
         headline_p.text = headline
         headline_p.font.size = Pt(24)
@@ -2273,13 +2345,13 @@ class PPTXGenerator:
 
         # CTA 영역
         cta_bg = slide.shapes.add_shape(
-            MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.5), Inches(3.9), Inches(12.3), Inches(1.2)
+            MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.5), Inches(3.9), Inches(9.23), Inches(1.2)
         )
         cta_bg.fill.solid()
         cta_bg.fill.fore_color.rgb = STYLE_COLORS["light"]
         cta_bg.line.fill.background()
 
-        cta_title = slide.shapes.add_textbox(Inches(0.7), Inches(4.0), Inches(11.9), Inches(0.35))
+        cta_title = slide.shapes.add_textbox(Inches(0.7), Inches(4.0), Inches(8.93), Inches(0.35))
         cta_title_p = cta_title.text_frame.paragraphs[0]
         cta_title_p.text = "저희가 제안하는 것"
         cta_title_p.font.size = Pt(14)
@@ -2287,7 +2359,7 @@ class PPTXGenerator:
         cta_title_p.font.color.rgb = STYLE_COLORS["primary"]
 
         for i, cta in enumerate(call_to_action[:4]):
-            x = Inches(0.9) if i < 2 else Inches(6.5)
+            x = Inches(0.9) if i < 2 else Inches(4.88)
             y = Inches(4.4 + (i % 2) * 0.35)
             cta_box = slide.shapes.add_textbox(x, y, Inches(5.4), Inches(0.35))
             cta_p = cta_box.text_frame.paragraphs[0]
@@ -2301,7 +2373,7 @@ class PPTXGenerator:
         else:
             contact_text = "담당자: [담당자명] | 연락처: [전화번호] | 이메일: [이메일]"
 
-        contact_box = slide.shapes.add_textbox(Inches(0.5), Inches(5.3), Inches(12.3), Inches(0.4))
+        contact_box = slide.shapes.add_textbox(Inches(0.5), Inches(5.3), Inches(9.23), Inches(0.4))
         contact_p = contact_box.text_frame.paragraphs[0]
         contact_p.text = contact_text
         contact_p.font.size = Pt(12)
@@ -2323,17 +2395,12 @@ class PPTXGenerator:
         """
         섹션 구분 슬라이드 (Win Theme 배지 포함)
         """
-        layout_idx = self.template_manager.get_layout_index("blank")
-        try:
-            slide_layout = self.prs.slide_layouts[layout_idx]
-        except IndexError:
-            slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
-
-        slide = self.prs.slides.add_slide(slide_layout)
+        slide_layout = self._get_layout("Title and Content_02")
+        slide = self._add_slide(slide_layout)
 
         # 다크 배경
         bg = slide.shapes.add_shape(
-            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(13.33), Inches(7.5)
+            MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), Inches(SLIDE_WIDTH_INCHES), Inches(SLIDE_HEIGHT_INCHES)
         )
         bg.fill.solid()
         bg.fill.fore_color.rgb = STYLE_COLORS["dark_bg"]
@@ -2341,7 +2408,7 @@ class PPTXGenerator:
 
         # Phase 번호
         num_text = f"0{phase_number}" if phase_number < 10 else str(phase_number)
-        num_box = slide.shapes.add_textbox(Inches(5.0), Inches(0.5), Inches(8), Inches(6))
+        num_box = slide.shapes.add_textbox(Inches(5.0), Inches(0.5), Inches(6.0), Inches(4.5))
         num_p = num_box.text_frame.paragraphs[0]
         num_p.text = num_text
         num_p.font.size = Pt(320)
@@ -2359,7 +2426,7 @@ class PPTXGenerator:
 
         # 스토리 타이틀
         if story_title:
-            story_box = slide.shapes.add_textbox(Inches(0.8), Inches(3.4), Inches(8), Inches(0.5))
+            story_box = slide.shapes.add_textbox(Inches(0.8), Inches(3.4), Inches(6.0), Inches(0.5))
             story_p = story_box.text_frame.paragraphs[0]
             story_p.text = story_title
             story_p.font.size = Pt(20)
@@ -2367,7 +2434,7 @@ class PPTXGenerator:
 
         # 메인 타이틀
         y_title = Inches(3.9) if story_title else Inches(3.6)
-        title_box = slide.shapes.add_textbox(Inches(0.8), y_title, Inches(8), Inches(1.0))
+        title_box = slide.shapes.add_textbox(Inches(0.8), y_title, Inches(6.0), Inches(1.0))
         title_p = title_box.text_frame.paragraphs[0]
         title_p.text = phase_title
         title_p.font.size = Pt(48)
@@ -2377,7 +2444,7 @@ class PPTXGenerator:
         # 서브타이틀
         if phase_subtitle:
             y_sub = Inches(5.3) if story_title else Inches(5.0)
-            sub_box = slide.shapes.add_textbox(Inches(0.8), y_sub, Inches(8), Inches(0.5))
+            sub_box = slide.shapes.add_textbox(Inches(0.8), y_sub, Inches(6.0), Inches(0.5))
             sub_p = sub_box.text_frame.paragraphs[0]
             sub_p.text = phase_subtitle
             sub_p.font.size = Pt(16)
@@ -2386,13 +2453,13 @@ class PPTXGenerator:
         # Win Theme 배지
         if win_theme:
             badge_bg = slide.shapes.add_shape(
-                MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(6.5), Inches(8), Inches(0.6)
+                MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(4.88), Inches(6.0), Inches(0.6)
             )
             badge_bg.fill.solid()
             badge_bg.fill.fore_color.rgb = STYLE_COLORS["secondary"]
             badge_bg.line.fill.background()
 
-            badge_box = slide.shapes.add_textbox(Inches(0.8), Inches(6.58), Inches(8), Inches(0.45))
+            badge_box = slide.shapes.add_textbox(Inches(0.8), Inches(4.94), Inches(6.0), Inches(0.45))
             badge_p = badge_box.text_frame.paragraphs[0]
             badge_p.text = f"💡 Win Theme: {win_theme}"
             badge_p.font.size = Pt(14)

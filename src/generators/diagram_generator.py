@@ -91,9 +91,11 @@ class DiagramGenerator:
             return
 
         num_steps = len(steps)
-        total_width = 12.0
+        slide_w = self.template_manager.get_slide_width_inches()
+        margin_h = 0.36
+        total_width = slide_w - 2 * margin_h
         step_width = total_width / num_steps
-        left_start = 0.67
+        left_start = margin_h
 
         colors = self._get_gradient_colors(num_steps)
 
@@ -260,11 +262,13 @@ class DiagramGenerator:
         if not features:
             return
 
-        total_width = 12.0
+        slide_w = self.template_manager.get_slide_width_inches()
+        margin_h = 0.36
+        total_width = slide_w - 2 * margin_h
         margin = 0.3
         box_width = (total_width - margin * (columns + 1)) / columns
         box_height = 1.8
-        left_start = 0.67
+        left_start = margin_h
 
         rows = (len(features) + columns - 1) // columns
 
@@ -378,9 +382,11 @@ class DiagramGenerator:
             return
 
         num_kpis = min(len(kpis), 4)  # 최대 4개
-        total_width = 12.0
+        slide_w = self.template_manager.get_slide_width_inches()
+        margin_h = 0.36
+        total_width = slide_w - 2 * margin_h
         kpi_width = total_width / num_kpis
-        left_start = 0.67
+        left_start = margin_h
 
         for i, kpi in enumerate(kpis[:4]):
             left = left_start + (i * kpi_width)

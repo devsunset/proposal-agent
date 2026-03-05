@@ -147,6 +147,7 @@ class ProposalOrchestrator:
                 input_data={
                     "rfp_analysis": rfp_analysis,
                     "company_data": company_data,
+                    "company_name": company_data.get("company_name", "[회사명]"),
                     "project_name": final_project_name,
                     "client_name": final_client_name,
                     "submission_date": submission_date,
@@ -278,11 +279,12 @@ class ProposalOrchestrator:
             first = loaded_phases[0] if loaded_phases else None
             one_sentence, key_diff, slogan = self.content_generator._extract_key_messages(None, first)
             rfp_summary = meta.get("rfp_analysis") or {}
+            company_name = (run_metadata.get("company_data") or {}).get("company_name", "[회사명]")
             return ProposalContent(
                 project_name=proj,
                 client_name=client,
                 submission_date=sub_date,
-                company_name="[회사명]",
+                company_name=company_name,
                 proposal_type=ptype_enum,
                 one_sentence_pitch=one_sentence,
                 key_differentiators=key_diff or [],
@@ -297,9 +299,11 @@ class ProposalOrchestrator:
         # 부족한 Phase가 있음 → run_metadata 또는 RFP 재실행으로 input_data 확보 후 execute_from_phase
         start_phase = min(missing_phases)
         if run_metadata:
+            comp_data = run_metadata.get("company_data") or {}
             input_data = {
                 "rfp_analysis": run_metadata["rfp_analysis"],
-                "company_data": run_metadata.get("company_data", {}),
+                "company_data": comp_data,
+                "company_name": comp_data.get("company_name", "[회사명]"),
                 "project_name": run_metadata.get("project_name") or project_name or "",
                 "client_name": run_metadata.get("client_name") or client_name or "",
                 "submission_date": run_metadata.get("submission_date") or submission_date or "",
@@ -315,10 +319,11 @@ class ProposalOrchestrator:
             company_data = {}
             if company_data_path and company_data_path.exists():
                 company_data = self._load_company_data(company_data_path)
-            rfp_analysis = await self.rfp_analyzer.execute(parsed, progress_callback=None)
+            rfp_analysis = await self.rfp_analyzer.execute(input_data=parsed, progress_callback=None)
             input_data = {
                 "rfp_analysis": rfp_analysis,
                 "company_data": company_data,
+                "company_name": company_data.get("company_name", "[회사명]"),
                 "project_name": project_name or rfp_analysis.project_name,
                 "client_name": client_name or rfp_analysis.client_name,
                 "submission_date": submission_date or "",

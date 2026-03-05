@@ -42,17 +42,17 @@ _SAFE_SYSTEM_FONTS = frozenset({
     "AppleGothic", "Helvetica", "Times New Roman",
 })
 
-# 빈 프레젠테이션 기본 슬라이드 크기 (16:9, design_system dimensions와 동일)
-_SLIDE_WIDTH_INCHES = 13.33
-_SLIDE_HEIGHT_INCHES = 7.5
+# 빈 프레젠테이션 기본 슬라이드 크기 (guide_template 기준 16:9)
+_SLIDE_WIDTH_INCHES = 10.00
+_SLIDE_HEIGHT_INCHES = 5.625
 
 
-def _set_slide_dimensions_16_9(prs: Presentation) -> None:
-    """빈 프레젠테이션에 16:9 슬라이드 크기 설정. 디자인 깨짐 방지."""
+def _set_slide_dimensions_guide(prs: Presentation) -> None:
+    """빈 프레젠테이션에 guide_template 기준 슬라이드 크기 설정."""
     try:
         prs.slide_width = Inches(_SLIDE_WIDTH_INCHES)
         prs.slide_height = Inches(_SLIDE_HEIGHT_INCHES)
-        logger.info("슬라이드 크기 설정: {:.2f} x {:.2f} inch (16:9)", _SLIDE_WIDTH_INCHES, _SLIDE_HEIGHT_INCHES)
+        logger.info("슬라이드 크기 설정: {:.2f} x {:.2f} inch", _SLIDE_WIDTH_INCHES, _SLIDE_HEIGHT_INCHES)
     except Exception as e:
         logger.warning("슬라이드 크기 설정 실패: {}", e)
 
@@ -110,49 +110,52 @@ class TemplateManager:
         return RGBColor(51, 51, 51)
 
     def _get_default_design_system(self) -> Dict[str, Any]:
-        """기본 디자인 시스템. 템플릿 미로드 시 또는 PPTX 테마 추출 실패 시 사용."""
+        """guide_template.pptx 기준 디자인 시스템. 템플릿 미로드 시 또는 PPTX 테마 추출 실패 시 사용."""
         return {
             "colors": {
-                "primary": RGBColor(0, 82, 147),
-                "secondary": RGBColor(0, 150, 199),
-                "accent": RGBColor(255, 107, 0),
+                # guide_template 테마 색상 (#14307F 네이비 계열)
+                "primary": RGBColor(0x14, 0x30, 0x7F),    # #14307F accent1 메인 네이비
+                "secondary": RGBColor(0x4C, 0x66, 0x86),  # #4C6686 accent2 미드 블루그레이
+                "accent": RGBColor(0xBD, 0x24, 0x39),     # #BD2439 accent4 레드 강조
+                "teal": RGBColor(0x00, 0x86, 0x82),       # #008682 accent3 청록색
+                "dark_bg": RGBColor(0x1B, 0x2C, 0x59),   # #1B2C59 accent5 다크 네이비
+                "dark_blue": RGBColor(0x14, 0x30, 0x7F),  # 별칭
+                "sky_blue": RGBColor(0x9E, 0xB2, 0xCA),   # #9EB2CA accent6 라이트 블루
                 "success": RGBColor(40, 167, 69),
                 "warning": RGBColor(255, 193, 7),
-                "danger": RGBColor(220, 53, 69),
-                "text_dark": RGBColor(51, 51, 51),
-                "text_light": RGBColor(128, 128, 128),
-                "text_gray": RGBColor(102, 102, 102),
+                "danger": RGBColor(0xBD, 0x24, 0x39),     # 레드
+                "text_dark": RGBColor(0x22, 0x22, 0x22),  # #222222 dk1
+                "text_light": RGBColor(0x4C, 0x66, 0x86), # #4C6686 미드
+                "text_gray": RGBColor(0x66, 0x66, 0x66),  # #666666
                 "background": RGBColor(255, 255, 255),
-                "background_light": RGBColor(245, 245, 245),
+                "background_light": RGBColor(0xEB, 0xEB, 0xEB),  # #EBEBEB lt2
                 "white": RGBColor(255, 255, 255),
-                "light": RGBColor(245, 245, 245),
-                "dark_blue": RGBColor(0, 44, 95),
-                "sky_blue": RGBColor(0, 170, 210),
-                "dark_bg": RGBColor(26, 26, 26),
-                "teal": RGBColor(0, 161, 156),
+                "light": RGBColor(0xDA, 0xDA, 0xDA),      # #DADADA 가이드 라이트 그레이
             },
             "fonts": {
+                # Pretendard 미설치 → 맑은 고딕 폴백
                 "title": "맑은 고딕",
                 "body": "맑은 고딕",
                 "english": "Arial",
                 "sizes": {
-                    "cover_title": Pt(44),
-                    "part_title": Pt(40),
-                    "slide_title": Pt(28),
-                    "subtitle": Pt(20),
-                    "body": Pt(16),
-                    "small": Pt(14),
-                    "caption": Pt(12),
+                    # guide_template 타이포그래피 스케일
+                    "cover_title": Pt(30),    # 표지 제목 30pt ExtraBold
+                    "part_title": Pt(30),     # 섹션 구분 제목 30pt Bold
+                    "slide_title": Pt(18),    # 슬라이드 제목 18pt Bold
+                    "subtitle": Pt(15),       # 부제목/레벨1 15pt SemiBold
+                    "body": Pt(12),           # 본문 12pt Medium
+                    "small": Pt(10),          # 작은 본문 10pt Light
+                    "caption": Pt(9),         # 캡션/각주 9pt Light
                 },
             },
             "spacing": {
-                "margin": Inches(0.5),
-                "content_margin": Inches(0.75),
-                "element_gap": Inches(0.25),
+                "margin": Inches(0.36),
+                "content_margin": Inches(0.50),
+                "element_gap": Inches(0.20),
             },
             "dimensions": {
-                "slide_width": Inches(13.33),
-                "slide_height": Inches(7.5),
+                "slide_width": Inches(10.00),
+                "slide_height": Inches(5.625),
             },
         }
 
@@ -238,10 +241,15 @@ class TemplateManager:
                 self.design_system["colors"][k] = v
             logger.info("템플릿 PPTX 테마 색상 적용: {}", list(extracted["colors"].keys()))
         if extracted.get("fonts"):
-            for k in ("title", "body", "english"):
-                if k in extracted["fonts"] and extracted["fonts"][k]:
-                    raw_font = str(extracted["fonts"][k])
-                    self.design_system["fonts"][k] = self._safe_font_name(raw_font)
+            # Latin 전용 폰트(Arial, Calibri 등)는 한국어 제안서에 적합하지 않으므로 무시
+            _LATIN_ONLY_FONTS = frozenset({"Arial", "Calibri", "Times New Roman", "Helvetica", "Tahoma", "Verdana"})
+            for k in ("title", "body"):
+                raw = str(extracted["fonts"].get(k, "")).strip()
+                if raw and raw not in _LATIN_ONLY_FONTS:
+                    self.design_system["fonts"][k] = self._safe_font_name(raw)
+            # english 폰트는 그대로 적용
+            if extracted["fonts"].get("english"):
+                self.design_system["fonts"]["english"] = str(extracted["fonts"]["english"])
             logger.info("템플릿 PPTX 테마 폰트 적용: {}", {
                 k: self.design_system["fonts"][k] for k in ("title", "body", "english")
                 if k in self.design_system["fonts"]
@@ -294,17 +302,17 @@ class TemplateManager:
             logger.warning("템플릿 레이아웃 추출 실패: {}", e)
             self._layout_geometry = None
 
-    def get_slide_width_inches(self) -> Optional[float]:
-        """템플릿에서 추출한 슬라이드 너비(inch). 없으면 None."""
-        if not self._layout_geometry:
-            return None
-        return self._layout_geometry.get("slide_width_inches")
+    def get_slide_width_inches(self) -> float:
+        """슬라이드 너비(inch). 템플릿에서 추출한 값 없으면 guide 기본값(10.00) 반환."""
+        if self._layout_geometry and self._layout_geometry.get("slide_width_inches") is not None:
+            return float(self._layout_geometry["slide_width_inches"])
+        return _SLIDE_WIDTH_INCHES
 
-    def get_slide_height_inches(self) -> Optional[float]:
-        """템플릿에서 추출한 슬라이드 높이(inch). 없으면 None."""
-        if not self._layout_geometry:
-            return None
-        return self._layout_geometry.get("slide_height_inches")
+    def get_slide_height_inches(self) -> float:
+        """슬라이드 높이(inch). 템플릿에서 추출한 값 없으면 guide 기본값(5.625) 반환."""
+        if self._layout_geometry and self._layout_geometry.get("slide_height_inches") is not None:
+            return float(self._layout_geometry["slide_height_inches"])
+        return _SLIDE_HEIGHT_INCHES
 
     def get_placeholder_geometry(self, role: str) -> Optional[Dict[str, Any]]:
         """
@@ -333,19 +341,21 @@ class TemplateManager:
                 candidates.append(f)
         if not candidates:
             return None
-        # 레이아웃이 가장 많은 템플릿 우선 선택 (디자인 완성도 높음)
+        # 모든 슬라이드 마스터의 레이아웃 합계가 가장 많은 템플릿 우선 선택
+        # (guide_template.pptx: Master[21]에 27개 레이아웃 → 합계가 가장 많음)
         best: Optional[Path] = candidates[0]
         best_count = 0
         for f in candidates:
             try:
-                n = len(Presentation(f).slide_layouts)
-                if n > best_count:
-                    best_count = n
+                p = Presentation(f)
+                total = sum(len(m.slide_layouts) for m in p.slide_masters)
+                if total > best_count:
+                    best_count = total
                     best = f
             except Exception:
                 pass
         self._cached_guide_path = best
-        logger.info("가이드 템플릿 선택: {} (레이아웃 {}개)", best.name if best else "없음", best_count)
+        logger.info("가이드 템플릿 선택: {} (전체 레이아웃 {}개)", best.name if best else "없음", best_count)
         return best
 
     def load_template(self, template_name: Optional[str] = "base_template") -> Presentation:
@@ -370,7 +380,7 @@ class TemplateManager:
             logger.info("템플릿 미사용: 기본 디자인으로 제안서 생성 (빈 프레젠테이션)")
             self._layout_geometry = None
             prs = Presentation()
-            _set_slide_dimensions_16_9(prs)
+            _set_slide_dimensions_guide(prs)
             return prs
 
         safe_name = safe_filename(template_name, max_len=80)
@@ -387,7 +397,7 @@ class TemplateManager:
             self._clear_all_slides(prs)
             self._apply_design_from_presentation(prs)
             self._extract_layout_from_presentation(prs)
-            _set_slide_dimensions_16_9(prs)
+            # 실제 템플릿의 슬라이드 크기를 그대로 사용 (강제 변경 않음)
             return prs
 
         guide_path = self._find_guide_template()
@@ -397,13 +407,13 @@ class TemplateManager:
             self._clear_all_slides(prs)
             self._apply_design_from_presentation(prs)
             self._extract_layout_from_presentation(prs)
-            _set_slide_dimensions_16_9(prs)
+            # 실제 템플릿의 슬라이드 크기를 그대로 사용 (guide_template: 10.00×5.625)
             return prs
 
         logger.info("기본 빈 프레젠테이션 생성 (templates 내 guide 포함 .pptx 없음)")
         self._layout_geometry = None
         prs = Presentation()
-        _set_slide_dimensions_16_9(prs)
+        _set_slide_dimensions_guide(prs)
         return prs
 
     def _clear_all_slides(self, prs: Presentation) -> None:
@@ -434,6 +444,32 @@ class TemplateManager:
         layouts = self.layouts.get("layouts", {})
         layout = layouts.get(layout_name, {})
         return layout.get("index", 1)
+
+    def get_slide_layout_by_name(self, prs: "Presentation", name: str):
+        """
+        모든 슬라이드 마스터에서 이름으로 레이아웃 검색.
+        guide_template.pptx의 경우 Master[21]에 27개 레이아웃이 있어
+        prs.slide_layouts (Master[0]만 반환) 대신 이 메서드로 검색해야 함.
+
+        Args:
+            prs: Presentation 객체
+            name: 레이아웃 이름 (예: "1_cover_02", "3_cover_02", "Title and Content_02")
+
+        Returns:
+            SlideLayout 객체 또는 None
+        """
+        # 정확히 일치하는 이름 우선 검색
+        for master in prs.slide_masters:
+            for layout in master.slide_layouts:
+                if layout.name == name:
+                    return layout
+        # 부분 일치 검색 (대소문자 무시)
+        name_lower = name.lower()
+        for master in prs.slide_masters:
+            for layout in master.slide_layouts:
+                if name_lower in layout.name.lower():
+                    return layout
+        return None
 
     def get_color(self, color_name: str) -> RGBColor:
         """색상 반환"""

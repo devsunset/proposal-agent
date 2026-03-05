@@ -270,9 +270,10 @@ class ChartGenerator:
             child_height = 0.8
             child_top = top + 1.5
 
-            # 총 너비 계산
+            # 총 너비 계산 (슬라이드 너비에 맞춰 중앙 정렬)
+            slide_width = self.template_manager.get_slide_width_inches()
             total_width = num_children * child_width + (num_children - 1) * 0.3
-            start_left = (13.33 - total_width) / 2
+            start_left = (slide_width - total_width) / 2
 
             for i, child in enumerate(org_chart.children):
                 child_left = start_left + i * (child_width + 0.3)
@@ -789,7 +790,8 @@ class ChartGenerator:
         ]
 
         item_width = 3.5
-        items_left = (13.33 - len(items) * item_width) / 2
+        slide_w = self.template_manager.get_slide_width_inches()
+        items_left = (slide_w - len(items) * item_width) / 2
         items_top = top + 3.5
 
         for i, (label, value) in enumerate(items):

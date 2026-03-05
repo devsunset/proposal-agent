@@ -650,11 +650,13 @@ Step {step}/{TOTAL_STEPS}: {description}
         one_sentence_pitch, key_differentiators, slogan = self._content_gen._extract_key_messages(
             teaser, phases[0] if phases else None
         )
+        company_data = state.get("company_data") or {}
+        company_name = company_data.get("company_name", "[회사명]") if isinstance(company_data, dict) else "[회사명]"
         return ProposalContent(
             project_name=project_name,
             client_name=client_name,
             submission_date=datetime.now().strftime("%Y-%m-%d"),
-            company_name="[회사명]",
+            company_name=company_name,
             proposal_type=proposal_type,
             one_sentence_pitch=one_sentence_pitch,
             key_differentiators=key_differentiators,
