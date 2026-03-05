@@ -1,0 +1,124 @@
+{
+  "company_name": "락플레이스(Rockplace)",
+  "founded_year": "2005",
+  "employee_count": "300명 이상",
+  "representative": "대표이사",
+  "headquarters": "서울특별시 종로구 종로33길 15 연강빌딩 5층 (03129)",
+  "main_services": [
+    "Red Hat OpenShift Container Platform 기반 컨테이너·클라우드 구축",
+    "Red Hat OpenStack Platform 등 프라이빗/하이브리드 클라우드 인프라 구축",
+    "PostgreSQL, MySQL, MariaDB, MongoDB 등 DBMS 마이그레이션 및 컨설팅",
+    "Red Hat Middleware(JBoss EAP, JWS) 및 미들웨어 도입·최적화",
+    "RHEL·Ubuntu 등 엔터프라이즈 OS 및 Red Hat Virtualization 가상화",
+    "온프레미스-클라우드 하이브리드 환경 설계 및 이전(Migration)",
+    "Red Hat Ceph Storage, Dynatrace 등 스토리지·APM 솔루션",
+    "클라우드·오픈소스 기반 디지털 인프라 컨설팅",
+    "데이터 분석·업무 자동화·AI 기반 운영 플랫폼 구축",
+    "케어팩(Carepack) 등 지속 운영·기술 지원 서비스"
+  ],
+  "certifications": [
+    "Red Hat 프리미어 비즈니스 파트너 (한국 최초·유일)",
+    "Red Hat Elite Business Associate / Advanced Business Partner",
+    "Microsoft Cloud Solution Partner (CSP)",
+    "정보통신업 신고",
+    "Red Hat Seoul Digital Experience Center(DX센터) 공동 설립·운영"
+  ],
+  "key_clients": [
+    "금융권 (은행·증권·보험)",
+    "공공기관·공기업",
+    "대기업·그룹사",
+    "메타넷그룹 계열사 및 협력사"
+  ],
+  "past_projects": [
+    {
+      "client": "금융권 A사",
+      "project": "Red Hat OpenShift 기반 컨테이너 플랫폼 도입 및 마이그레이션",
+      "year": "2023",
+      "amount": "비공개",
+      "achievement": "핵심 업무 시스템 OpenShift 전환 완료, 배포 자동화 및 운영 효율 40% 개선"
+    },
+    {
+      "client": "공공 B기관",
+      "project": "PostgreSQL 마이그레이션 및 하이브리드 클라우드 인프라 구축",
+      "year": "2023",
+      "amount": "비공개",
+      "achievement": "기존 DB에서 PostgreSQL 이전 완료, Red Hat OpenStack 기반 프라이빗 클라우드 구축"
+    },
+    {
+      "client": "대기업 C그룹",
+      "project": "Red Hat Middleware 전환 및 JBoss EAP 기반 애플리케이션 서버 구축",
+      "year": "2022",
+      "amount": "비공개",
+      "achievement": "레거시 미들웨어에서 Red Hat 제품군 전환, 연간 라이선스 비용 절감"
+    },
+    {
+      "client": "레드햇코리아",
+      "project": "Red Hat Seoul Digital Experience Center(DX센터) 설립·운영 협력",
+      "year": "2022",
+      "amount": "비공개",
+      "achievement": "한국레드햇과 공동 DX센터 설립, 오픈소스·클라우드 체험 및 교육 인프라 제공"
+    },
+    {
+      "client": "제조·유통 D사",
+      "project": "온프레미스-클라우드 하이브리드 환경 설계 및 마이그레이션",
+      "year": "2021",
+      "amount": "비공개",
+      "achievement": "일관성·호환성 유지하며 단계적 클라우드 전환 완료, 가용성 99.9% 달성"
+    }
+  ],
+  "team_members": [
+    {
+      "name": "클라우드 아키텍트",
+      "role": "수석 컨설턴트 / Red Hat OpenShift 전문가",
+      "experience_years": 12,
+      "expertise": ["Red Hat OpenShift", "Kubernetes", "컨테이너 플랫폼 설계", "클라우드 마이그레이션"],
+      "certifications": ["Red Hat Certified Architect", "CKA"]
+    },
+    {
+      "name": "데이터베이스 엔지니어",
+      "role": "DB 마이그레이션·튜닝 전문가",
+      "experience_years": 10,
+      "expertise": ["PostgreSQL", "MySQL", "MariaDB", "Oracle to OSS 이전", "고가용성 구성"],
+      "certifications": ["PostgreSQL Professional", "Red Hat Certified Engineer"]
+    },
+    {
+      "name": "미들웨어 컨설턴트",
+      "role": "Red Hat Middleware·JBoss 전문가",
+      "experience_years": 8,
+      "expertise": ["JBoss EAP", "JWS", "Red Hat Middleware", "애플리케이션 서버 구축"],
+      "certifications": ["Red Hat Certified Specialist in Middleware"]
+    },
+    {
+      "name": "인프라 엔지니어",
+      "role": "OpenStack·가상화·스토리지",
+      "experience_years": 9,
+      "expertise": ["Red Hat OpenStack Platform", "Red Hat Virtualization", "Ceph Storage", "RHEL"],
+      "certifications": ["Red Hat Certified Engineer", "Red Hat Certified Specialist in OpenStack"]
+    }
+  ],
+  "financial": {
+    "annual_revenue": "연매출 1,500억 원 이상 (메타넷그룹 통합 후)",
+    "credit_rating": "메타넷그룹 계열사"
+  },
+  "awards": [
+    "2023 레드햇 국내 최고의 파트너상 (Top Partner of the Year)",
+    "2022 레드햇 APAC 파트너 어워드 톱 지역 파트너 (Top Regional Partner)",
+    "2022 한국레드햇과 Red Hat Seoul DX센터 공동 설립",
+    "2021 레드햇 국내 최우수 파트너 선정",
+    "2014 레드햇 채널 어워드 톱 파트너",
+    "2012 레드햇 채널 어워드 톱 파트너",
+    "2011 레드햇 채널 어워드 톱 파트너"
+  ],
+  "unique_strengths": [
+    "한국 레드햇 최초·유일 프리미어 비즈니스 파트너 (2022년 등극)",
+    "레드햇 국내 최고의 파트너상 2023 수상",
+    "18년차 오픈소스·클라우드 전문 기업, Red Hat 제품 전 라인업 컨설팅·구축·운영",
+    "OpenShift·PostgreSQL·미들웨어·OpenStack 등 금융·공공·대기업 다수 프로젝트 수행",
+    "메타넷그룹 통합 후 300명 이상 규모, MSP(Managed Service Provider) 전문 조직"
+  ],
+  "contact": {
+    "phone": "02-6251-7788",
+    "email": "info@rockplace.co.kr",
+    "website": "https://www.rockplace.co.kr"
+  }
+}

@@ -3,21 +3,26 @@
 
 전체 워크플로우를 조율합니다: RFP 파싱 → 회사 데이터 로드 → RFP 분석(LLM) → 제안서 콘텐츠 생성(LLM).
 LLM은 .env의 LLM_PROVIDER에 따라 Claude/Gemini/Groq 중 하나가 사용됩니다.
+체크포인트 재개: _checkpoints/run_YYYYMMDD_HHMMSS 에서 로드 후 부족한 Phase만 생성.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ..parsers import get_parser_for_path
 from ..agents.rfp_analyzer import RFPAnalyzer
 from ..agents.content_generator import ContentGenerator
-from ..schemas.proposal_schema import ProposalContent, ProposalType, PHASE_TITLES
+from ..schemas.proposal_schema import ProposalContent, PhaseContent, ProposalType, PHASE_TITLES
 from ..schemas.rfp_schema import RFPAnalysis
 from ..utils.logger import get_logger
 from config.settings import get_settings
 
 logger = get_logger("proposal_orchestrator")
+
+RUN_METADATA_FILENAME = "run_metadata.json"
+PHASE_FILE_PATTERN = re.compile(r"^phase_(\d+)_(.+)\.json$")
 
 
 class ProposalOrchestrator:
@@ -192,6 +197,147 @@ class ProposalOrchestrator:
         except Exception as e:
             logger.error("회사 데이터 로드 실패: {}: {}", type(e).__name__, str(e)[:200])
             raise
+
+    def _scan_checkpoint_phases(self, checkpoint_dir: Path) -> Dict[int, Path]:
+        """체크포인트 폴더에서 phase_NN_*.json 파일 스캔 → { phase_number: path }"""
+        found: Dict[int, Path] = {}
+        for p in checkpoint_dir.iterdir():
+            if not p.is_file():
+                continue
+            m = PHASE_FILE_PATTERN.match(p.name)
+            if m:
+                num = int(m.group(1))
+                if 1 <= num <= 7:
+                    found[num] = p
+        return found
+
+    def _load_phase_content(self, path: Path) -> PhaseContent:
+        """Phase JSON 파일 하나 로드"""
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return PhaseContent.model_validate(data)
+
+    def _load_run_metadata(self, checkpoint_dir: Path) -> Optional[Dict[str, Any]]:
+        """run_metadata.json 로드. 없으면 None"""
+        path = checkpoint_dir / RUN_METADATA_FILENAME
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    async def resume_from_checkpoint(
+        self,
+        checkpoint_dir: Path,
+        rfp_path: Optional[Path] = None,
+        company_data_path: Optional[Path] = None,
+        project_name: Optional[str] = None,
+        client_name: Optional[str] = None,
+        submission_date: Optional[str] = None,
+        proposal_type: Optional[str] = None,
+        progress_callback: Optional[Callable] = None,
+    ) -> ProposalContent:
+        """
+        체크포인트 run 폴더에서 Phase 로드 후, 부족한 Phase만 API로 생성해 ProposalContent 반환.
+        인자: checkpoint_dir (output/_checkpoints/run_YYYYMMDD_HHMMSS), 선택적으로 rfp_path 등.
+        run_metadata.json 이 없으면 rfp_path 필수 (RFP 재파싱·재분석 후 재개).
+        """
+        checkpoint_dir = Path(checkpoint_dir)
+        if not checkpoint_dir.is_dir():
+            raise FileNotFoundError(f"체크포인트 폴더가 없습니다: {checkpoint_dir}")
+
+        phase_paths = self._scan_checkpoint_phases(checkpoint_dir)
+        existing_phases = sorted(phase_paths.keys())
+        missing_phases = [n for n in range(1, 8) if n not in phase_paths]
+
+        if not existing_phases:
+            raise ValueError(f"체크포인트에 Phase 파일이 없습니다: {checkpoint_dir}")
+
+        loaded_phases: List[PhaseContent] = []
+        for n in existing_phases:
+            loaded_phases.append(self._load_phase_content(phase_paths[n]))
+        loaded_cross_phase_summaries: List[Dict[str, Any]] = []
+        for pc in loaded_phases:
+            loaded_cross_phase_summaries.append(self.content_generator._extract_phase_summary(pc))
+
+        run_metadata = self._load_run_metadata(checkpoint_dir)
+
+        if not missing_phases:
+            # 1~7 전부 있음 → API 없이 ProposalContent만 조립 후 반환
+            meta = run_metadata or {}
+            proj = meta.get("project_name") or project_name or (loaded_phases[0].phase_title if loaded_phases else "")
+            client = meta.get("client_name") or client_name or ""
+            sub_date = meta.get("submission_date") or submission_date or ""
+            ptype = meta.get("proposal_type") or proposal_type
+            if ptype and isinstance(ptype, str):
+                try:
+                    ptype_enum = ProposalType(ptype)
+                except ValueError:
+                    ptype_enum = ProposalType.GENERAL
+            else:
+                ptype_enum = ProposalType.GENERAL
+            win_themes_raw = meta.get("win_themes") or []
+            win_theme_models = self.content_generator._build_win_theme_models(win_themes_raw)
+            first = loaded_phases[0] if loaded_phases else None
+            one_sentence, key_diff, slogan = self.content_generator._extract_key_messages(None, first)
+            rfp_summary = meta.get("rfp_analysis") or {}
+            return ProposalContent(
+                project_name=proj,
+                client_name=client,
+                submission_date=sub_date,
+                company_name="[회사명]",
+                proposal_type=ptype_enum,
+                one_sentence_pitch=one_sentence,
+                key_differentiators=key_diff or [],
+                slogan=slogan,
+                win_themes=win_theme_models,
+                rfp_summary=rfp_summary,
+                teaser=None,
+                phases=loaded_phases,
+                design_style="guide_template",
+            )
+
+        # 부족한 Phase가 있음 → run_metadata 또는 RFP 재실행으로 input_data 확보 후 execute_from_phase
+        start_phase = min(missing_phases)
+        if run_metadata:
+            input_data = {
+                "rfp_analysis": run_metadata["rfp_analysis"],
+                "company_data": run_metadata.get("company_data", {}),
+                "project_name": run_metadata.get("project_name") or project_name or "",
+                "client_name": run_metadata.get("client_name") or client_name or "",
+                "submission_date": run_metadata.get("submission_date") or submission_date or "",
+                "proposal_type": run_metadata.get("proposal_type") or proposal_type,
+            }
+        else:
+            if not rfp_path or not rfp_path.exists():
+                raise ValueError(
+                    "체크포인트에 run_metadata.json이 없습니다. 재개하려면 RFP 경로를 지정하세요: "
+                    "python main.py generate <RFP경로> --resume-checkpoint _checkpoints/run_YYYYMMDD_HHMMSS"
+                )
+            parsed = self._parse_document(rfp_path)
+            company_data = {}
+            if company_data_path and company_data_path.exists():
+                company_data = self._load_company_data(company_data_path)
+            rfp_analysis = await self.rfp_analyzer.execute(parsed, progress_callback=None)
+            input_data = {
+                "rfp_analysis": rfp_analysis,
+                "company_data": company_data,
+                "project_name": project_name or rfp_analysis.project_name,
+                "client_name": client_name or rfp_analysis.client_name,
+                "submission_date": submission_date or "",
+                "proposal_type": proposal_type,
+            }
+        win_themes = (run_metadata or {}).get("win_themes") or []
+        run_diagnostics: List[Dict[str, Any]] = []
+        content = await self.content_generator.execute_from_phase(
+            input_data=input_data,
+            start_phase=start_phase,
+            loaded_phases=loaded_phases,
+            loaded_win_themes=win_themes,
+            loaded_cross_phase_summaries=loaded_cross_phase_summaries,
+            checkpoint_dir=checkpoint_dir,
+            progress_callback=progress_callback,
+            diagnostics_out=run_diagnostics,
+        )
+        self._run_diagnostics = run_diagnostics
+        return content
 
     def save_content_json(
         self, content: ProposalContent, output_path: Path

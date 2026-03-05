@@ -356,6 +356,7 @@ class PPTXGenerator:
         tf = textbox.text_frame
         p = tf.paragraphs[0]
         p.text = f">> {message}"
+        p.font.name = self.template_manager.get_font_name("body")
         p.font.size = self.template_manager.get_font_size("body")
         p.font.bold = True
         p.font.color.rgb = self.template_manager.get_color("accent")
@@ -401,6 +402,7 @@ class PPTXGenerator:
         # 열 제목
         p = tf.paragraphs[0]
         p.text = column_title
+        p.font.name = self.template_manager.get_font_name("title")
         p.font.size = self.template_manager.get_font_size("subtitle")
         p.font.bold = True
         p.font.color.rgb = self.template_manager.get_color("secondary")
@@ -497,6 +499,7 @@ class PPTXGenerator:
             icon_tf = icon_box.text_frame
             icon_p = icon_tf.paragraphs[0]
             icon_p.text = column["icon"]
+            icon_p.font.name = self.template_manager.get_font_name("body")
             icon_p.font.size = Pt(28)
             icon_p.alignment = PP_ALIGN.CENTER
             current_top += 0.6
@@ -511,6 +514,7 @@ class PPTXGenerator:
         title_tf = title_box.text_frame
         title_p = title_tf.paragraphs[0]
         title_p.text = column.get("title", "")
+        title_p.font.name = self.template_manager.get_font_name("title")
         title_p.font.size = Pt(14)
         title_p.font.bold = True
         title_p.font.color.rgb = self.template_manager.get_color("primary")
@@ -528,6 +532,7 @@ class PPTXGenerator:
             content_tf.word_wrap = True
             content_p = content_tf.paragraphs[0]
             content_p.text = column["content"]
+            content_p.font.name = self.template_manager.get_font_name("body")
             content_p.font.size = Pt(11)
             content_p.font.color.rgb = self.template_manager.get_color("text_dark")
 
@@ -548,6 +553,7 @@ class PPTXGenerator:
                 else:
                     p = bullets_tf.add_paragraph()
                 p.text = f"• {bullet}"
+                p.font.name = self.template_manager.get_font_name("body")
                 p.font.size = Pt(10)
 
     def add_big_number_slide(
@@ -611,6 +617,7 @@ class PPTXGenerator:
         value_tf = value_box.text_frame
         value_p = value_tf.paragraphs[0]
         value_p.text = stat.get("value", "")
+        value_p.font.name = self.template_manager.get_font_name("title")
         value_p.font.size = Pt(48)
         value_p.font.bold = True
         value_p.font.color.rgb = self.template_manager.get_color("primary")
@@ -626,6 +633,7 @@ class PPTXGenerator:
         label_tf = label_box.text_frame
         label_p = label_tf.paragraphs[0]
         label_p.text = stat.get("label", "")
+        label_p.font.name = self.template_manager.get_font_name("body")
         label_p.font.size = Pt(14)
         label_p.font.bold = True
         label_p.font.color.rgb = self.template_manager.get_color("text_dark")
@@ -642,6 +650,7 @@ class PPTXGenerator:
             desc_tf = desc_box.text_frame
             desc_p = desc_tf.paragraphs[0]
             desc_p.text = stat["description"]
+            desc_p.font.name = self.template_manager.get_font_name("body")
             desc_p.font.size = Pt(11)
             desc_p.font.color.rgb = self.template_manager.get_color("text_light")
             desc_p.alignment = PP_ALIGN.CENTER
@@ -730,6 +739,7 @@ class PPTXGenerator:
             icon_tf = icon_box.text_frame
             icon_p = icon_tf.paragraphs[0]
             icon_p.text = item["icon"]
+            icon_p.font.name = self.template_manager.get_font_name("body")
             icon_p.font.size = Pt(24)
             icon_p.alignment = PP_ALIGN.CENTER
 
@@ -743,6 +753,7 @@ class PPTXGenerator:
         title_tf = title_box.text_frame
         title_p = title_tf.paragraphs[0]
         title_p.text = item.get("title", "")
+        title_p.font.name = self.template_manager.get_font_name("title")
         title_p.font.size = Pt(11)
         title_p.font.bold = True
         title_p.font.color.rgb = self.template_manager.get_color("primary")
@@ -760,6 +771,7 @@ class PPTXGenerator:
             desc_tf.word_wrap = True
             desc_p = desc_tf.paragraphs[0]
             desc_p.text = item["description"]
+            desc_p.font.name = self.template_manager.get_font_name("body")
             desc_p.font.size = Pt(9)
             desc_p.font.color.rgb = self.template_manager.get_color("text_dark")
             desc_p.alignment = PP_ALIGN.CENTER
@@ -815,6 +827,7 @@ class PPTXGenerator:
         quote_tf.word_wrap = True
         quote_p = quote_tf.paragraphs[0]
         quote_p.text = f'"{quote}"'
+        quote_p.font.name = self.template_manager.get_font_name("body")
         quote_p.font.size = Pt(20)
         quote_p.font.italic = True
         quote_p.font.color.rgb = self.template_manager.get_color("text_dark")
@@ -831,6 +844,7 @@ class PPTXGenerator:
             author_tf = author_box.text_frame
             author_p = author_tf.paragraphs[0]
             author_p.text = f"- {author}"
+            author_p.font.name = self.template_manager.get_font_name("body")
             author_p.font.size = Pt(14)
             author_p.font.color.rgb = self.template_manager.get_color("text_light")
             author_p.alignment = PP_ALIGN.RIGHT
@@ -887,6 +901,7 @@ class PPTXGenerator:
         headline_tf.word_wrap = True
         headline_p = headline_tf.paragraphs[0]
         headline_p.text = headline
+        headline_p.font.name = self.template_manager.get_font_name("title")
         headline_p.font.size = Pt(54)
         headline_p.font.bold = True
         headline_p.font.color.rgb = RGBColor(255, 255, 255)
@@ -904,6 +919,7 @@ class PPTXGenerator:
             sub_tf.word_wrap = True
             sub_p = sub_tf.paragraphs[0]
             sub_p.text = subheadline
+            sub_p.font.name = self.template_manager.get_font_name("body")
             sub_p.font.size = Pt(24)
             sub_p.font.color.rgb = STYLE_COLORS["sky_blue"]
             sub_p.alignment = PP_ALIGN.CENTER
@@ -955,6 +971,7 @@ class PPTXGenerator:
         num_tf = num_box.text_frame
         num_p = num_tf.paragraphs[0]
         num_p.text = f"0{phase_number}" if phase_number < 10 else str(phase_number)
+        num_p.font.name = self.template_manager.get_font_name("title")
         num_p.font.size = Pt(120)
         num_p.font.bold = True
         num_p.font.color.rgb = STYLE_COLORS["sky_blue"]
@@ -970,6 +987,7 @@ class PPTXGenerator:
         title_tf = title_box.text_frame
         title_p = title_tf.paragraphs[0]
         title_p.text = phase_title
+        title_p.font.name = self.template_manager.get_font_name("title")
         title_p.font.size = Pt(44)
         title_p.font.bold = True
         title_p.font.color.rgb = RGBColor(255, 255, 255)
@@ -985,6 +1003,7 @@ class PPTXGenerator:
             sub_tf = sub_box.text_frame
             sub_p = sub_tf.paragraphs[0]
             sub_p.text = phase_subtitle
+            sub_p.font.name = self.template_manager.get_font_name("body")
             sub_p.font.size = Pt(20)
             sub_p.font.color.rgb = RGBColor(180, 180, 180)
 
@@ -1039,6 +1058,7 @@ class PPTXGenerator:
         msg_tf.word_wrap = True
         msg_p = msg_tf.paragraphs[0]
         msg_p.text = message
+        msg_p.font.name = self.template_manager.get_font_name("title")
         msg_p.font.size = Pt(40)
         msg_p.font.bold = True
         msg_p.font.color.rgb = text_color
@@ -1056,6 +1076,7 @@ class PPTXGenerator:
             sup_tf.word_wrap = True
             sup_p = sup_tf.paragraphs[0]
             sup_p.text = supporting_text
+            sup_p.font.name = self.template_manager.get_font_name("body")
             sup_p.font.size = Pt(18)
             sup_p.font.color.rgb = STYLE_COLORS["sky_blue"] if background_style == "dark" else STYLE_COLORS["text_gray"]
             sup_p.alignment = PP_ALIGN.CENTER

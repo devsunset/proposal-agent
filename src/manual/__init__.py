@@ -4,6 +4,14 @@ from .manual_orchestrator import (
     ManualOrchestrator,
     _step_request_file_name,
     _step_response_file_name,
+    create_run_dir,
+    resolve_manual_run_dir,
 )
 
-__all__ = ["ManualOrchestrator", "_step_request_file_name", "_step_response_file_name"]
+__all__ = [
+    "ManualOrchestrator",
+    "_step_request_file_name",
+    "_step_response_file_name",
+    "create_run_dir",
+    "resolve_manual_run_dir",
+]

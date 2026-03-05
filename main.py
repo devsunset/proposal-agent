@@ -18,6 +18,7 @@ CLI 명령:
 - types: 지원 제안서 유형 목록
 - templates: 사용 가능한 PPTX 템플릿 목록
 - info: Impact-8 Framework 설명
+- help: 실행 가능한 명령어와 상세 예시 출력 (python main.py help)
 """
 
 import asyncio
@@ -72,12 +73,17 @@ console = Console()
 
 @app.command()
 def generate(
-    rfp_path: Path = typer.Argument(
-        ...,
-        help="RFP 문서 경로 (PDF/DOCX/TXT/PPTX)",
-        exists=True,
+    rfp_path: Optional[Path] = typer.Argument(
+        None,
+        help="RFP 문서 경로 (PDF/DOCX/TXT/PPTX). --resume-checkpoint 사용 시 run_metadata.json 없을 때만 생략 가능.",
         file_okay=True,
         dir_okay=False,
+    ),
+    resume_checkpoint: Optional[str] = typer.Option(
+        None,
+        "--resume-checkpoint",
+        "-r",
+        help="체크포인트 재개: _checkpoints/run_YYYYMMDD_HHMMSS 형식. 지정 시 해당 run에서 로드 후 부족 Phase만 생성 또는 PPTX만 생성.",
     ),
     project_name: Optional[str] = typer.Option(
         None,
@@ -133,7 +139,18 @@ def generate(
     예시:
         python main.py generate input/rfp.pdf -n "[프로젝트명]" -c "[발주처명]" -t marketing_pr
         python main.py generate input/rfp.pdf --manual   # 수동 모드 (LLM API 없이)
+        python main.py generate --resume-checkpoint run_20260305_095658   # 체크포인트 재개 (Phase 이어서 생성 또는 PPTX만 생성)
     """
+    # 체크포인트 재개 시에만 RFP 경로 생략 가능
+    if not resume_checkpoint and not rfp_path:
+        console.print("[red]RFP 문서 경로를 지정하세요. 예: python main.py generate input/rfp.pdf[/red]")
+        raise typer.Exit(1)
+    if rfp_path is not None and not rfp_path.exists():
+        console.print(f"[red]RFP 파일이 없습니다: {rfp_path}[/red]")
+        raise typer.Exit(1)
+    if manual and not rfp_path:
+        console.print("[red]수동 모드에서는 RFP 문서 경로가 필요합니다.[/red]")
+        raise typer.Exit(1)
     # 수동 모드: LLM API 불필요, 파일 기반으로 진행
     if manual:
         _run_manual_generate(
@@ -194,7 +211,10 @@ def generate(
         )
     )
 
-    console.print(f"\n[bold]입력 파일:[/bold] {rfp_path}")
+    if resume_checkpoint:
+        console.print(f"\n[bold]체크포인트 재개:[/bold] {resume_checkpoint}")
+    else:
+        console.print(f"\n[bold]입력 파일:[/bold] {rfp_path}")
     if project_name:
         console.print(f"[bold]프로젝트명:[/bold] {project_name}")
     if client_name:
@@ -210,6 +230,7 @@ def generate(
     out = asyncio.run(
         _generate_async(
             rfp_path=rfp_path,
+            resume_checkpoint=resume_checkpoint,
             project_name=project_name or "",
             client_name=client_name or "",
             proposal_type=proposal_type,
@@ -238,7 +259,8 @@ def generate(
 
 
 async def _generate_async(
-    rfp_path: Path,
+    rfp_path: Optional[Path],
+    resume_checkpoint: Optional[str],
     project_name: str,
     client_name: str,
     proposal_type: Optional[str],
@@ -252,6 +274,7 @@ async def _generate_async(
     try:
         return await _generate_async_impl(
             rfp_path=rfp_path,
+            resume_checkpoint=resume_checkpoint,
             project_name=project_name,
             client_name=client_name,
             proposal_type=proposal_type,
@@ -266,7 +289,8 @@ async def _generate_async(
 
 
 async def _generate_async_impl(
-    rfp_path: Path,
+    rfp_path: Optional[Path],
+    resume_checkpoint: Optional[str],
     project_name: str,
     client_name: str,
     proposal_type: Optional[str],
@@ -276,20 +300,29 @@ async def _generate_async_impl(
     save_json: bool,
     api_key: str,
 ):
-    """제안서 생성 실제 로직"""
+    """제안서 생성 실제 로직 (일반 실행 또는 체크포인트 재개)"""
 
-    # Step 1: 콘텐츠 생성 (설정된 LLM)
+    # Step 1: 콘텐츠 생성 (설정된 LLM) 또는 체크포인트 재개
     _llm = {"claude": "Claude", "groq": "Groq", "gemini": "Gemini", "ollama": "Ollama"}.get(
         get_settings().llm_provider, "LLM"
     )
     console.print()
-    console.print(
-        Panel(
-            f"[bold]{_llm}[/bold] - Impact-8",
-            title="[bold]Step 1: 콘텐츠 생성[/bold]",
-            border_style="cyan",
+    if resume_checkpoint:
+        console.print(
+            Panel(
+                "[bold]체크포인트 재개[/bold] - 부족 Phase만 생성 또는 PPTX만 생성",
+                title="[bold]Step 1: 콘텐츠 로드/재개[/bold]",
+                border_style="cyan",
+            )
         )
-    )
+    else:
+        console.print(
+            Panel(
+                f"[bold]{_llm}[/bold] - Impact-8",
+                title="[bold]Step 1: 콘텐츠 생성[/bold]",
+                border_style="cyan",
+            )
+        )
 
     proposal_orchestrator = ProposalOrchestrator(api_key=api_key)
 
@@ -298,21 +331,38 @@ async def _generate_async_impl(
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
-        task = progress.add_task("분석 및 콘텐츠 생성 중...", total=None)
+        task = progress.add_task(
+            "체크포인트 로드 및 재개 중..." if resume_checkpoint else "분석 및 콘텐츠 생성 중...",
+            total=None,
+        )
         _last_phase = [-1]
         update_progress = _make_progress_callback(console, progress, task, _last_phase)
 
         submission_date = datetime.now().strftime("%Y-%m-%d")
 
-        content = await proposal_orchestrator.execute(
-            rfp_path=rfp_path,
-            company_data_path=company_data if company_data.exists() else None,
-            project_name=project_name,
-            client_name=client_name,
-            submission_date=submission_date,
-            proposal_type=proposal_type,
-            progress_callback=update_progress,
-        )
+        if resume_checkpoint:
+            run_id = Path(resume_checkpoint).name
+            checkpoint_dir = output_dir / "_checkpoints" / run_id
+            content = await proposal_orchestrator.resume_from_checkpoint(
+                checkpoint_dir=checkpoint_dir,
+                rfp_path=rfp_path,
+                company_data_path=company_data if company_data.exists() else None,
+                project_name=project_name or None,
+                client_name=client_name or None,
+                submission_date=submission_date,
+                proposal_type=proposal_type,
+                progress_callback=update_progress,
+            )
+        else:
+            content = await proposal_orchestrator.execute(
+                rfp_path=rfp_path,
+                company_data_path=company_data if company_data.exists() else None,
+                project_name=project_name,
+                client_name=client_name,
+                submission_date=submission_date,
+                proposal_type=proposal_type,
+                progress_callback=update_progress,
+            )
 
     console.print(
         Panel("[green]✓ 완료[/green]", title="[bold]Step 1 완료[/bold]", border_style="cyan")
@@ -531,8 +581,13 @@ def _run_manual_generate(
     output_dir: Path,
     template: Optional[str],
 ) -> None:
-    """수동 모드: RFP 파싱 후 Step 1 요청 파일 생성"""
-    from src.manual import ManualOrchestrator, _step_request_file_name, _step_response_file_name
+    """수동 모드: RFP 파싱 후 Step 1 요청 파일 생성 (실행 시점별 run_YYYYMMDD_HHMMSS 폴더 사용)"""
+    from src.manual import (
+        ManualOrchestrator,
+        _step_request_file_name,
+        _step_response_file_name,
+        create_run_dir,
+    )
 
     _valid_types = {p.value for p in ConfigProposalType}
     if proposal_type and proposal_type not in _valid_types:
@@ -556,7 +611,9 @@ def _run_manual_generate(
     if client_name:
         console.print(f"[bold]발주처:[/bold] {client_name}")
 
-    orchestrator = ManualOrchestrator(manual_dir=Path("manual"))
+    run_dir = create_run_dir(Path("manual_req_res"))
+    console.print(f"[bold]작업 폴더:[/bold] {run_dir}")
+    orchestrator = ManualOrchestrator(manual_dir=run_dir)
     try:
         orchestrator.start(
             rfp_path=rfp_path,
@@ -572,15 +629,17 @@ def _run_manual_generate(
         raise typer.Exit(1)
 
     req_f, res_f = _step_request_file_name(1), _step_response_file_name(1)
+    run_path = str(run_dir).replace("\\", "/")
     console.print(
         Panel(
             "[bold green]Step 1/9 준비 완료![/bold green]\n\n"
+            f"[bold]작업 폴더:[/bold] {run_path}\n\n"
             "[bold]다음 단계:[/bold]\n"
-            f"1. [cyan]manual/{req_f}[/cyan] 파일을 열어 프롬프트를 확인하세요.\n"
+            f"1. [cyan]{run_path}/{req_f}[/cyan] 파일을 열어 프롬프트를 확인하세요.\n"
             "2. [시스템 프롬프트]와 [사용자 메시지]를 Google AI Studio에 입력하세요.\n"
             "   → https://aistudio.google.com/\n"
-            f"3. Gemini 응답(JSON)을 [cyan]manual/{res_f}[/cyan] 에 붙여넣으세요.\n"
-            "4. [bold]python main.py continue[/bold] 를 실행하세요.",
+            f"3. Gemini 응답(JSON)을 [cyan]{run_path}/{res_f}[/cyan] 에 붙여넣으세요.\n"
+            "4. [bold]python main.py continue[/bold] 를 실행하세요. (같은 run 폴더 자동 사용)",
             title="수동 모드 시작",
             border_style="yellow",
         )
@@ -590,9 +649,9 @@ def _run_manual_generate(
 @app.command(name="continue")
 def manual_continue(
     manual_dir: Path = typer.Option(
-        Path("manual"),
+        Path("manual_req_res"),
         "--manual-dir",
-        help="수동 모드 작업 폴더 (기본: manual/)",
+        help="수동 모드 기준 폴더. 기본값이면 manual_req_res/latest_run.txt 로 최신 run_YYYYMMDD_HHMMSS 사용",
     ),
 ) -> None:
     """
@@ -603,9 +662,15 @@ def manual_continue(
     예시:
         python main.py continue
     """
-    from src.manual import ManualOrchestrator, _step_request_file_name, _step_response_file_name
+    from src.manual import (
+        ManualOrchestrator,
+        _step_request_file_name,
+        _step_response_file_name,
+        resolve_manual_run_dir,
+    )
 
-    orchestrator = ManualOrchestrator(manual_dir=manual_dir)
+    resolved_dir = resolve_manual_run_dir(manual_dir)
+    orchestrator = ManualOrchestrator(manual_dir=resolved_dir)
     try:
         status = orchestrator.get_status()
     except Exception as e:
@@ -668,12 +733,13 @@ def manual_continue(
         next_step = new_status["current_step"]
         next_desc = new_status["steps"][next_step - 1]["description"] if next_step <= total_steps else ""
         next_req, next_res = _step_request_file_name(next_step), _step_response_file_name(next_step)
+        run_path = str(orchestrator.manual_dir).replace("\\", "/")
         console.print(
             Panel(
                 f"[green]Step {current_step} 완료![/green]\n\n"
                 f"[bold]다음 단계:[/bold] Step {next_step}/{total_steps} - {next_desc}\n\n"
-                f"1. [cyan]manual/{next_req}[/cyan] 파일을 열어 프롬프트를 확인하세요.\n"
-                f"2. Gemini에 입력하고 응답을 [cyan]manual/{next_res}[/cyan] 에 붙여넣으세요.\n"
+                f"1. [cyan]{run_path}/{next_req}[/cyan] 파일을 열어 프롬프트를 확인하세요.\n"
+                f"2. Gemini에 입력하고 응답을 [cyan]{run_path}/{next_res}[/cyan] 에 붙여넣으세요.\n"
                 "3. [bold]python main.py continue[/bold] 를 다시 실행하세요.",
                 title=f"Step {current_step} 완료",
                 border_style="yellow",
@@ -684,9 +750,9 @@ def manual_continue(
 @app.command()
 def status(
     manual_dir: Path = typer.Option(
-        Path("manual"),
+        Path("manual_req_res"),
         "--manual-dir",
-        help="수동 모드 작업 폴더 (기본: manual/)",
+        help="수동 모드 기준 폴더. 기본값이면 최신 run_YYYYMMDD_HHMMSS 폴더 사용",
     ),
 ) -> None:
     """
@@ -695,9 +761,10 @@ def status(
     예시:
         python main.py status
     """
-    from src.manual import ManualOrchestrator, _step_response_file_name
+    from src.manual import ManualOrchestrator, _step_response_file_name, resolve_manual_run_dir
 
-    orchestrator = ManualOrchestrator(manual_dir=manual_dir)
+    resolved_dir = resolve_manual_run_dir(manual_dir)
+    orchestrator = ManualOrchestrator(manual_dir=resolved_dir)
     try:
         s = orchestrator.get_status()
     except Exception as e:
@@ -764,13 +831,14 @@ def status(
                 print(f"{sn:<5} Step {sn:<37} {req:^6} {res:^6} {st:^8}")
     if not s.get("done") and current <= total:
         current_res = _step_response_file_name(current)
+        run_path = str(orchestrator.manual_dir).replace("\\", "/")
         try:
             console.print(
-                f"\n[dim]현재 대기: manual/{current_res} 를 작성 후 "
+                f"\n[dim]현재 대기: {run_path}/{current_res} 를 작성 후 "
                 "'python main.py continue' 실행[/dim]"
             )
         except Exception:
-            print(f"\n현재 대기: manual/{current_res} 를 작성 후 'python main.py continue' 실행")
+            print(f"\n현재 대기: {run_path}/{current_res} 를 작성 후 'python main.py continue' 실행")
 
 
 @app.command()
@@ -996,6 +1064,120 @@ def info():
             border_style="cyan",
         )
     )
+
+
+# help 예시용: 파서가 지원하는 RFP 확장자 (get_parser_for_path 기준)
+_HELP_RFP_EXTENSIONS = "pdf,docx,doc,txt,pptx"
+
+def _help_example_rfp_path() -> str:
+    """input/ 폴더에 RFP로 쓸 수 있는 파일이 있으면 그 경로(슬래시), 없으면 input/rfp.(확장자들) 반환."""
+    input_dir = Path("input")
+    if not input_dir.is_dir():
+        return f"input/rfp.({_HELP_RFP_EXTENSIONS})"
+    exts = {".pdf", ".docx", ".doc", ".txt", ".pptx"}
+    for f in sorted(input_dir.iterdir()):
+        if f.is_file() and f.suffix.lower() in exts and f.name != ".gitkeep":
+            return (input_dir / f.name).as_posix()
+    return f"input/rfp.({_HELP_RFP_EXTENSIONS})"
+
+
+def _help_example_checkpoint_run() -> str:
+    """output/_checkpoints/ 아래 run_* 폴더가 있으면 그 이름(최신 1개), 없으면 run_YYYYMMDD_HHMMSS 반환."""
+    try:
+        out = get_settings().output_dir
+    except Exception:
+        out = Path("output")
+    check_dir = out / "_checkpoints"
+    if not check_dir.is_dir():
+        return "run_YYYYMMDD_HHMMSS"
+    runs = sorted([d.name for d in check_dir.iterdir() if d.is_dir() and d.name.startswith("run_")], reverse=True)
+    return runs[0] if runs else "run_YYYYMMDD_HHMMSS"
+
+
+@app.command(name="help")
+def help_cmd():
+    """
+    현재 프로젝트에서 실행 가능한 명령어와 상세 예시를 출력합니다.
+
+    예시: python main.py help
+    input/ 폴더와 output/_checkpoints/ 내용을 참조해 예시 경로를 동적으로 채웁니다.
+    """
+    rfp_example = _help_example_rfp_path()
+    run_example = _help_example_checkpoint_run()
+
+    console.print(
+        Panel(
+            "[bold cyan]Proposal Agent[/bold cyan] - 이 프로젝트에서 사용할 수 있는 CLI 명령어와 예시입니다.\n"
+            "각 명령은 [cyan]python main.py <명령> [옵션][/cyan] 형태로 실행합니다.",
+            title="명령어 도움말",
+            border_style="cyan",
+        )
+    )
+    console.print()
+
+    # generate
+    console.print("[bold]1. generate[/bold] - RFP 문서로 제안서(PPTX) 생성")
+    console.print("  [dim]RFP를 분석한 뒤 Impact-8 구조의 제안서 콘텐츠를 만들고 PPTX로 저장합니다.[/dim]\n")
+    _examples = [
+        ("기본 실행 (프로젝트명·발주처 미입력 시 RFP에서 추출)", f"python main.py generate {rfp_example}"),
+        ("프로젝트명·발주처 지정", f"python main.py generate {rfp_example} -n \"프로젝트명\" -c \"발주처\""),
+        ("제안서 유형 지정 (marketing_pr, event, it_system 등)", f"python main.py generate {rfp_example} -t marketing_pr"),
+        ("회사 프로필 JSON 경로 지정", f"python main.py generate {rfp_example} -d company_data/company_profile.json"),
+        ("출력 폴더 지정", f"python main.py generate {rfp_example} -o output"),
+        ("생성된 콘텐츠 JSON 저장", f"python main.py generate {rfp_example} --save-json"),
+        ("수동 모드 (LLM API 없이 파일 기반)", f"python main.py generate {rfp_example} --manual"),
+        ("체크포인트 재개 (중단된 run 이어서 진행)", f"python main.py generate --resume-checkpoint {run_example}"),
+        ("체크포인트 재개 + RFP 지정 (run_metadata 없을 때)", f"python main.py generate {rfp_example} -r {run_example} -n \"프로젝트명\" -c \"발주처\""),
+    ]
+    for desc, cmd in _examples:
+        console.print(f"  • [dim]{desc}[/dim]")
+        console.print(f"    [green]{cmd}[/green]\n")
+
+    # continue
+    console.print("[bold]2. continue[/bold] - 수동 모드: 다음 단계 진행")
+    console.print("  [dim]수동 모드에서 응답 파일을 처리한 뒤 다음 단계 요청 파일을 생성합니다.[/dim]\n")
+    console.print("  • [dim]기본 (최신 run 폴더 사용)[/dim]")
+    console.print("    [green]python main.py continue[/green]\n")
+    console.print("  • [dim]특정 run 폴더 지정[/dim]")
+    console.print(f"    [green]python main.py continue --manual-dir manual_req_res/{run_example}[/green]\n")
+
+    # status
+    console.print("[bold]3. status[/bold] - 수동 모드 진행 상태 확인")
+    console.print("  [dim]현재 대기 중인 단계와 완료된 단계를 표시합니다.[/dim]\n")
+    console.print("  • [green]python main.py status[/green]")
+    console.print("  • [green]python main.py status --manual-dir manual_req_res[/green]\n")
+
+    # analyze
+    console.print("[bold]4. analyze[/bold] - RFP 분석만 수행 (PPTX 미생성)")
+    console.print("  [dim]RFP를 파싱·분석하여 결과만 출력합니다. 제안서 콘텐츠/PPTX는 생성하지 않습니다.[/dim]\n")
+    console.print(f"  • [green]python main.py analyze {rfp_example}[/green]\n")
+
+    # setup-company
+    console.print("[bold]5. setup-company[/bold] - 회사 프로필 대화형 설정")
+    console.print("  [dim]회사명·서비스·수행 실적·핵심 인력 등을 입력해 company_data/company_profile.json에 저장합니다.[/dim]\n")
+    console.print("  • [green]python main.py setup-company[/green]")
+    console.print("  • [green]python main.py setup-company -o company_data/my_profile.json[/green]\n")
+
+    # types
+    console.print("[bold]6. types[/bold] - 지원 제안서 유형 목록")
+    console.print("  [dim]marketing_pr, event, it_system, public, consulting, general 등 유형 코드와 설명을 출력합니다.[/dim]\n")
+    console.print("  • [green]python main.py types[/green]\n")
+
+    # templates
+    console.print("[bold]7. templates[/bold] - 사용 가능한 PPTX 템플릿 목록")
+    console.print("  [dim]템플릿 디렉터리의 .pptx 파일 목록과 사용 방법을 안내합니다.[/dim]\n")
+    console.print("  • [green]python main.py templates[/green]\n")
+
+    # info
+    console.print("[bold]8. info[/bold] - Impact-8 Framework 설명")
+    console.print("  [dim]Phase 구성, 비중, 디자인 스타일 등 프레임워크 개요를 출력합니다.[/dim]\n")
+    console.print("  • [green]python main.py info[/green]\n")
+
+    # help (this command)
+    console.print("[bold]9. help[/bold] - 이 도움말 (명령별 상세 예시)")
+    console.print("  • [green]python main.py help[/green]\n")
+
+    console.print("[dim]특정 명령의 옵션 전체 보기: python main.py <명령> --help[/dim]")
 
 
 if __name__ == "__main__":

@@ -42,6 +42,20 @@ _SAFE_SYSTEM_FONTS = frozenset({
     "AppleGothic", "Helvetica", "Times New Roman",
 })
 
+# 빈 프레젠테이션 기본 슬라이드 크기 (16:9, design_system dimensions와 동일)
+_SLIDE_WIDTH_INCHES = 13.33
+_SLIDE_HEIGHT_INCHES = 7.5
+
+
+def _set_slide_dimensions_16_9(prs: Presentation) -> None:
+    """빈 프레젠테이션에 16:9 슬라이드 크기 설정. 디자인 깨짐 방지."""
+    try:
+        prs.slide_width = Inches(_SLIDE_WIDTH_INCHES)
+        prs.slide_height = Inches(_SLIDE_HEIGHT_INCHES)
+        logger.info("슬라이드 크기 설정: %.2f x %.2f inch (16:9)", _SLIDE_WIDTH_INCHES, _SLIDE_HEIGHT_INCHES)
+    except Exception as e:
+        logger.warning("슬라이드 크기 설정 실패: %s", e)
+
 
 class TemplateManager:
     """
@@ -339,7 +353,9 @@ class TemplateManager:
         if not (template_name or "").strip():
             logger.info("템플릿 미사용: 기본 디자인으로 제안서 생성 (빈 프레젠테이션)")
             self._layout_geometry = None
-            return Presentation()
+            prs = Presentation()
+            _set_slide_dimensions_16_9(prs)
+            return prs
 
         safe_name = safe_filename(template_name, max_len=80)
         template_path = (self.templates_dir / f"{safe_name}.pptx").resolve()
@@ -368,7 +384,9 @@ class TemplateManager:
 
         logger.info("기본 빈 프레젠테이션 생성 (templates 내 guide 포함 .pptx 없음)")
         self._layout_geometry = None
-        return Presentation()
+        prs = Presentation()
+        _set_slide_dimensions_16_9(prs)
+        return prs
 
     def _clear_all_slides(self, prs: Presentation) -> None:
         """

@@ -136,6 +136,7 @@ class DiagramGenerator:
         # 제목
         p1 = tf.paragraphs[0]
         p1.text = step.get("title", "")
+        p1.font.name = self.template_manager.get_font_name("title")
         p1.font.size = Pt(14)
         p1.font.bold = True
         p1.font.color.rgb = RGBColor(255, 255, 255)
@@ -145,6 +146,7 @@ class DiagramGenerator:
         if step.get("description"):
             p2 = tf.add_paragraph()
             p2.text = step["description"]
+            p2.font.name = self.template_manager.get_font_name("body")
             p2.font.size = Pt(10)
             p2.font.color.rgb = RGBColor(255, 255, 255)
             p2.alignment = PP_ALIGN.CENTER
@@ -169,6 +171,7 @@ class DiagramGenerator:
 
         p1 = tf.paragraphs[0]
         p1.text = step.get("title", "")
+        p1.font.name = self.template_manager.get_font_name("title")
         p1.font.size = Pt(12)
         p1.font.bold = True
         p1.font.color.rgb = RGBColor(255, 255, 255)
@@ -197,6 +200,7 @@ class DiagramGenerator:
         tf.word_wrap = False
         p = tf.paragraphs[0]
         p.text = str(number)
+        p.font.name = self.template_manager.get_font_name("title")
         p.font.size = Pt(24)
         p.font.bold = True
         p.font.color.rgb = RGBColor(255, 255, 255)
@@ -214,6 +218,7 @@ class DiagramGenerator:
         title_tf.word_wrap = True
         title_p = title_tf.paragraphs[0]
         title_p.text = step.get("title", "")
+        title_p.font.name = self.template_manager.get_font_name("body")
         title_p.font.size = Pt(11)
         title_p.font.bold = True
         title_p.alignment = PP_ALIGN.CENTER
@@ -313,6 +318,7 @@ class DiagramGenerator:
             icon_tf = icon_box.text_frame
             icon_p = icon_tf.paragraphs[0]
             icon_p.text = feature["icon"]
+            icon_p.font.name = self.template_manager.get_font_name("body")
             icon_p.font.size = Pt(24)
             icon_p.alignment = PP_ALIGN.CENTER
             current_top += 0.5
@@ -328,6 +334,7 @@ class DiagramGenerator:
         title_tf.word_wrap = True
         title_p = title_tf.paragraphs[0]
         title_p.text = feature.get("title", "")
+        title_p.font.name = self.template_manager.get_font_name("title")
         title_p.font.size = Pt(12)
         title_p.font.bold = True
         title_p.font.color.rgb = self.template_manager.get_color("primary")
@@ -345,6 +352,7 @@ class DiagramGenerator:
             desc_tf.word_wrap = True
             desc_p = desc_tf.paragraphs[0]
             desc_p.text = feature["description"]
+            desc_p.font.name = self.template_manager.get_font_name("body")
             desc_p.font.size = Pt(10)
             desc_p.font.color.rgb = self.template_manager.get_color("text_dark")
             desc_p.alignment = PP_ALIGN.CENTER
@@ -551,6 +559,7 @@ class DiagramGenerator:
         tf = shape.text_frame
         p = tf.paragraphs[0]
         p.text = title
+        p.font.name = self.template_manager.get_font_name("title")
         p.font.size = Pt(16)
         p.font.bold = True
         p.font.color.rgb = RGBColor(255, 255, 255)
@@ -694,6 +703,7 @@ class DiagramGenerator:
         tf.word_wrap = True
         p = tf.paragraphs[0]
         p.text = item.get("title", "")
+        p.font.name = self.template_manager.get_font_name("body")
         p.font.size = Pt(11)
         p.font.bold = True
         p.font.color.rgb = self.template_manager.get_color("text_dark")

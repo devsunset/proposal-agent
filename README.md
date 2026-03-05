@@ -9,7 +9,7 @@ RFP(제안요청서) PDF/DOCX/TXT/PPTX를 입력하면 **Impact-8 구조의 PPTX
 - **RFP Chunking**: 섹션 우선순위 기반 청킹으로 긴 RFP(평가기준·요구사항 우선) 완전 분석 (기존 25,000자 → 40,000자)
 - **슬라이드 품질 자동 스코어링**: Action Title 준수·구체성·플레이스홀더 남용을 규칙 기반으로 자동 채점
 - **Cross-Phase Context**: Phase 간 핵심 결론을 다음 Phase에 전달해 내러티브 일관성 확보
-- **Phase Checkpoint**: 각 Phase 생성 후 자동 저장 → API 실패 시 재시작 불필요
+- **Phase Checkpoint**: 각 Phase 생성 후 `output/_checkpoints/run_YYYYMMDD_HHMMSS/` 에 자동 저장 → **체크포인트 재개**(`--resume-checkpoint run_...`)로 부족 Phase만 이어서 생성 또는 PPTX만 생성
 - **Industry Stats DB**: 업종별 검증 통계 주입으로 수치 구체성 향상
 - **회사 프로필 CLI**: `setup-company` 명령으로 회사 실적·역량 입력 → Phase 6(WHY US) 품질 향상
 - **Modern 스타일 PPTX**: TemplateManager(폰트 폴백 포함) + python-pptx 기반 렌더링
@@ -47,6 +47,9 @@ python main.py generate input/sample.txt -n "프로젝트명" -c "발주처명"
 
 # 제안서 유형 지정
 python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처" -t marketing_pr
+
+# 체크포인트 재개 (중단된 run 이어서 진행)
+python main.py generate --resume-checkpoint run_20260305_095658
 
 # RFP 분석만 수행
 python main.py analyze input/rfp.pdf

@@ -44,6 +44,35 @@ from config.proposal_types import get_config, ProposalType as ConfigProposalType
 logger = get_logger("manual_orchestrator")
 
 TOTAL_STEPS = 9
+RUN_ID_FMT = "%Y%m%d_%H%M%S"
+LATEST_RUN_FILE = "latest_run.txt"
+
+
+def resolve_manual_run_dir(base_dir: Path) -> Path:
+    """
+    수동 모드 기준 폴더(manual_req_res)를 넘기면, 실제 실행 폴더(run_YYYYMMDD_HHMMSS)로 해석.
+    - base_dir 안에 state.json 이 있으면 base_dir 자체가 run 폴더.
+    - 없으면 base_dir/latest_run.txt 를 읽어 base_dir/run_YYYYMMDD_HHMMSS 반환.
+    """
+    base_dir = Path(base_dir)
+    if (base_dir / "state.json").exists():
+        return base_dir
+    latest = base_dir / LATEST_RUN_FILE
+    if latest.exists():
+        run_name = latest.read_text(encoding="utf-8").strip()
+        if run_name:
+            return base_dir / run_name
+    return base_dir
+
+
+def create_run_dir(base_dir: Path) -> Path:
+    """실행 시점 기준 run_YYYYMMDD_HHMMSS 폴더 생성 후 경로 반환."""
+    base_dir = Path(base_dir)
+    base_dir.mkdir(parents=True, exist_ok=True)
+    run_id = datetime.now().strftime(RUN_ID_FMT)
+    run_dir = base_dir / f"run_{run_id}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
 
 STEP_DESCRIPTIONS = {
     1: "RFP 분석",
@@ -96,7 +125,7 @@ class ManualOrchestrator:
     기존 ContentGenerator / RFPAnalyzer 의 프롬프트 빌딩 로직을 재활용합니다.
     """
 
-    def __init__(self, manual_dir: Path = Path("manual")):
+    def __init__(self, manual_dir: Path = Path("manual_req_res")):
         self.manual_dir = Path(manual_dir)
         self.manual_dir.mkdir(parents=True, exist_ok=True)
         self.state_file = self.manual_dir / "state.json"
@@ -173,6 +202,9 @@ class ManualOrchestrator:
             "started_at": datetime.now().isoformat(),
         }
         self._save_state(state)
+        # 이번 실행 run 폴더를 latest_run.txt 에 기록 (continue/status 기본 해석용)
+        base = self.manual_dir.parent
+        (base / LATEST_RUN_FILE).write_text(self.manual_dir.name, encoding="utf-8")
         logger.info("Step 1 요청 파일 생성: {}", self.manual_dir / _step_request_file_name(1))
 
     def continue_step(self) -> bool:
@@ -480,7 +512,7 @@ Step {step}/{TOTAL_STEPS}: {description}
    - [사용자 메시지]  → 메인 입력란에 입력
 
 2. Gemini 응답(JSON 전체)을 복사하여 아래 파일에 붙여넣으세요:
-   → manual/{response_file}
+   → {self.manual_dir.as_posix()}/{response_file}
 
 3. 다음 명령 실행:
    python main.py continue

@@ -261,7 +261,7 @@ class PPTXOrchestrator:
             )
 
         elif slide_type == "timeline":
-            self.diagram_generator.add_timeline_slide(
+            self.chart_generator.add_timeline_slide(
                 generator=self.generator,
                 title=slide.title,
                 timeline_items=slide.timeline,
@@ -269,7 +269,7 @@ class PPTXOrchestrator:
             )
 
         elif slide_type == "org_chart":
-            self.diagram_generator.add_org_chart_slide(
+            self.chart_generator.add_org_chart_slide(
                 generator=self.generator,
                 title=slide.title,
                 org_chart=slide.org_chart,

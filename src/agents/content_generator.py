@@ -201,6 +201,9 @@ class ContentGenerator(BaseAgent):
                 win_themes = win_theme_candidates
                 logger.info("RFP Win Theme 후보 {}개 사용 (폴백)", len(win_themes))
 
+        # 재개 시 사용할 run_metadata 저장 (Phase 1 완료 시점)
+        self._save_run_metadata(checkpoint_dir, input_data, rfp_analysis, win_themes or [])
+
         # 품질 스코어러 초기화
         scorer = SlideQualityScorer() if settings.enable_quality_scoring else None
 
@@ -276,6 +279,95 @@ class ContentGenerator(BaseAgent):
             win_themes=win_theme_models if win_theme_models else None,
             rfp_summary=rfp_analysis.model_dump(),
             teaser=teaser,
+            phases=phases,
+            design_style="guide_template",
+        )
+
+    async def execute_from_phase(
+        self,
+        input_data: Dict[str, Any],
+        start_phase: int,
+        loaded_phases: List[PhaseContent],
+        loaded_win_themes: List[Dict[str, Any]],
+        loaded_cross_phase_summaries: List[Dict[str, Any]],
+        checkpoint_dir: Optional[Path] = None,
+        progress_callback: Optional[Callable] = None,
+        diagnostics_out: Optional[List[Dict[str, Any]]] = None,
+    ) -> ProposalContent:
+        """
+        체크포인트 재개: start_phase ~ 7만 API로 생성하고, loaded_phases와 합쳐 ProposalContent 반환.
+        loaded_phases는 phase_number 1..start_phase-1 순서로 이미 채워져 있음.
+        """
+        rfp_analysis = input_data["rfp_analysis"]
+        if isinstance(rfp_analysis, dict):
+            rfp_analysis = RFPAnalysis(**rfp_analysis)
+        proposal_type = self._determine_proposal_type(
+            input_data.get("proposal_type") or getattr(rfp_analysis, "project_type", None),
+            rfp_analysis,
+        )
+        weights = get_phase_weights(proposal_type)
+        phases = list(loaded_phases)
+        cross_phase_summaries = list(loaded_cross_phase_summaries)
+        win_themes = list(loaded_win_themes)
+        diagnostics: List[Dict[str, Any]] = []
+        scorer = SlideQualityScorer() if get_settings().enable_quality_scoring else None
+
+        for phase_num in range(start_phase, 8):
+            if progress_callback:
+                progress_callback({
+                    "step": phase_num,
+                    "total": 8,
+                    "message": f"Phase {phase_num}: {PHASE_TITLES[phase_num]} 생성 중...",
+                })
+            logger.info("Phase {}: {} 생성 중... (재개)", phase_num, PHASE_TITLES[phase_num])
+            t0 = time.perf_counter()
+            phase_content = await self._generate_phase(
+                phase_num=phase_num,
+                rfp_analysis=rfp_analysis,
+                company_data=input_data.get("company_data", {}),
+                project_name=input_data["project_name"],
+                client_name=input_data["client_name"],
+                proposal_type=proposal_type,
+                weight=weights.get(phase_num, 0.1),
+                win_themes=win_themes,
+                cross_phase_summaries=cross_phase_summaries,
+            )
+            phases.append(phase_content)
+            elapsed = round(time.perf_counter() - t0, 2)
+            logger.info("Phase {}: {} 생성 완료 ({}슬라이드, {}초)", phase_num, PHASE_TITLES[phase_num], len(phase_content.slides), elapsed)
+            if scorer:
+                report = scorer.score_phase(phase_content, get_settings().min_slide_quality_score)
+                if report.summary != "품질 양호":
+                    logger.warning("Phase {} 품질 경고: {} (평균 {:.0f}점)", phase_num, report.summary, report.avg_score)
+            diagnostics.append({
+                "phase": phase_num,
+                "phase_title": PHASE_TITLES.get(phase_num, ""),
+                "slides_count": len(phase_content.slides),
+                "elapsed_sec": elapsed,
+                "json_ok": True,
+            })
+            self._save_checkpoint(checkpoint_dir, phase_num, phase_content)
+            cross_phase_summaries.append(self._extract_phase_summary(phase_content))
+
+        if diagnostics_out is not None:
+            diagnostics_out.clear()
+            diagnostics_out.extend(diagnostics)
+
+        win_theme_models = self._build_win_theme_models(win_themes)
+        first_phase = phases[0] if phases else None
+        one_sentence_pitch, key_differentiators, slogan = self._extract_key_messages(None, first_phase)
+        return ProposalContent(
+            project_name=input_data["project_name"],
+            client_name=input_data["client_name"],
+            submission_date=input_data.get("submission_date", ""),
+            company_name=input_data.get("company_name", "[회사명]"),
+            proposal_type=proposal_type,
+            one_sentence_pitch=one_sentence_pitch,
+            key_differentiators=key_differentiators,
+            slogan=slogan,
+            win_themes=win_theme_models if win_theme_models else None,
+            rfp_summary=rfp_analysis.model_dump(),
+            teaser=None,
             phases=phases,
             design_style="guide_template",
         )
@@ -1312,6 +1404,37 @@ content_examples 필드를 사용하여:
     # -----------------------------------------------------------------------
     # 체크포인트 저장
     # -----------------------------------------------------------------------
+
+    RUN_METADATA_FILENAME = "run_metadata.json"
+
+    def _save_run_metadata(
+        self,
+        checkpoint_dir: Optional[Path],
+        input_data: Dict[str, Any],
+        rfp_analysis: RFPAnalysis,
+        win_themes: List[Dict[str, Any]],
+    ) -> None:
+        """재개 시 필요한 메타데이터 저장 (run_metadata.json). Phase 1 저장 직후 호출."""
+        if not checkpoint_dir:
+            return
+        try:
+            meta = {
+                "rfp_analysis": rfp_analysis.model_dump(),
+                "company_data": input_data.get("company_data", {}),
+                "project_name": input_data.get("project_name", ""),
+                "client_name": input_data.get("client_name", ""),
+                "submission_date": input_data.get("submission_date", ""),
+                "proposal_type": input_data.get("proposal_type") or getattr(rfp_analysis, "project_type", None),
+                "win_themes": win_themes,
+            }
+            path = checkpoint_dir / self.RUN_METADATA_FILENAME
+            path.write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            logger.debug("run_metadata 저장: {}", path)
+        except Exception as e:
+            logger.warning("run_metadata 저장 실패: {}", str(e)[:100])
 
     def _save_checkpoint(
         self,
