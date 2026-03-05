@@ -1,9 +1,9 @@
-# Trim advance.md: remove implemented sections, keep unimplemented only.
+# Trim docs/5.TO-DO.md: remove implemented sections, keep unimplemented only.
 # Run from repo root: python scripts/trim_advance.py
 
 from pathlib import Path
 
-path = Path(__file__).parent.parent / "advance.md"
+path = Path(__file__).parent.parent / "docs" / "5.TO-DO.md"
 lines = path.read_text(encoding="utf-8").splitlines()
 
 # Ranges to REMOVE (1-based, inclusive). After first edit, line numbers shift.

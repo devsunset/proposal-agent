@@ -107,8 +107,8 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator + chart/diagram_generat
 ## 디렉토리 구조
 
 ```
-├── main.py                     # CLI 엔트리포인트 (generate, analyze, setup-company, types, info, templates)
-├── AGENT_GUIDE.md              # 에이전트 가이드
+├── main.py                     # CLI 엔트리포인트 (generate, continue, status, analyze, setup-company, types, info, templates)
+├── docs/                       # 1.제안서_에이전트_소개, 2.INSTALL_AND_USAGE, 3.AGENT_GUIDE, 4.PROJECT_ANALYZ, 5.TO-DO
 ├── .env.example                # 환경 변수 예시 (복사 후 .env로 사용)
 ├── config/
 │   ├── settings.py             # API 키·LLM 선택·경로·고도화 옵션
@@ -150,12 +150,11 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator + chart/diagram_generat
 
 | 문서 | 설명 |
 | ---- | ---- |
-| [제안서 에이전트 소개](docs/제안서_에이전트_소개.md) | 개요·핵심 가치·문서 네비게이션 |
-| [설치 및 사용 가이드](docs/INSTALL_AND_USAGE.md) | 설치·설정·실행·트러블슈팅 (단일 통합 가이드) |
-| [에이전트 가이드](docs/AGENT_GUIDE.md) | 시스템·워크플로우·Impact-8·에이전트 규칙 (AI/개발자용) |
-| [Ollama 로컬 LLM](docs/ollama.md) | 로컬 LLM 설치·설정 |
-| [고도화 로드맵](docs/advance.md) | 미구현·추후 계획 |
-| [소스 구조](docs/project.md) | 디렉토리·아키텍처 |
+| [제안서 에이전트 소개](docs/1.제안서_에이전트_소개.md) | 개요·핵심 가치·문서 네비게이션 |
+| [설치 및 사용 가이드](docs/2.INSTALL_AND_USAGE.md) | 설치·설정·실행·트러블슈팅·Ollama·수동 모드 (단일 통합 가이드) |
+| [에이전트 가이드](docs/3.AGENT_GUIDE.md) | 시스템·워크플로우·Impact-8·에이전트 규칙 (AI/개발자용) |
+| [소스 구조](docs/4.PROJECT_ANALYZ.md) | 디렉토리·아키텍처·설정·스키마 |
+| [고도화·미구현](docs/5.TO-DO.md) | 미구현·추후 계획 |
 
 ## 주요 기능
 

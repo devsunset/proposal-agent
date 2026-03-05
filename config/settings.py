@@ -148,7 +148,7 @@ class Settings(BaseModel):
     slide_height_inches: float = 7.5
 
     # -------------------------------------------------------------------------
-    # 고도화 기능 활성화 옵션 (advance.md Phase 1~2)
+    # 고도화 기능 활성화 옵션 (docs/5.TO-DO.md Phase 1~2)
     # -------------------------------------------------------------------------
     # RFP 청킹: 의미 단위 분할로 25,000자 제한 해소
     enable_rfp_chunking: bool = os.getenv("ENABLE_RFP_CHUNKING", "true").lower() == "true"
