@@ -118,8 +118,10 @@ class ContentGenerator(BaseAgent):
         # 체크포인트 디렉터리 (실행마다 run_YYYYMMDD_HHMMSS 폴더로 구분 → 이전 실행이 덮어씌워지지 않음)
         checkpoint_dir: Optional[Path] = None
         if settings.enable_checkpoint:
+            checkpoints_base = settings.output_dir / "_checkpoints"
+            checkpoints_base.mkdir(parents=True, exist_ok=True)
             run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-            checkpoint_dir = settings.output_dir / "_checkpoints" / f"run_{run_id}"
+            checkpoint_dir = checkpoints_base / f"run_{run_id}"
             checkpoint_dir.mkdir(parents=True, exist_ok=True)
             logger.info("체크포인트 저장 경로: {}", checkpoint_dir)
 
@@ -1418,6 +1420,7 @@ content_examples 필드를 사용하여:
         if not checkpoint_dir:
             return
         try:
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
             meta = {
                 "rfp_analysis": rfp_analysis.model_dump(),
                 "company_data": input_data.get("company_data", {}),
@@ -1446,6 +1449,7 @@ content_examples 필드를 사용하여:
         if not checkpoint_dir:
             return
         try:
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
             path = checkpoint_dir / f"phase_{phase_num:02d}_{phase_content.phase_title.replace(' ', '_')}.json"
             path.write_text(
                 phase_content.model_dump_json(indent=2, ensure_ascii=False),

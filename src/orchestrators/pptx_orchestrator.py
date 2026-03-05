@@ -349,12 +349,18 @@ class PPTXOrchestrator:
             if hasattr(campaign_data, 'dict'):
                 campaign_data = campaign_data.dict()
 
+            activities_raw = campaign_data.get("activities", slide.bullets or [])
+            activities = (
+                activities_raw
+                if all(isinstance(a, (str, dict)) for a in (activities_raw or []))
+                else [getattr(a, "text", str(a)) for a in (activities_raw or [])]
+            )
             self.generator.add_campaign_slide(
                 title=slide.title,
                 campaign_name=campaign_data.get("name", slide.title),
                 period=campaign_data.get("period", ""),
                 objective=campaign_data.get("objective", ""),
-                activities=campaign_data.get("activities", slide.bullets or []),
+                activities=activities or [],
                 notes=slide.notes or "",
             )
 
@@ -404,7 +410,8 @@ class PPTXOrchestrator:
             }
 
             if slide.bullets:
-                case_data["description"] = " ".join(slide.bullets[:2])
+                desc_parts = [getattr(b, "text", str(b)) for b in (slide.bullets or [])[:2]]
+                case_data["description"] = " ".join(desc_parts)
 
             if slide.kpis:
                 for kpi in slide.kpis:

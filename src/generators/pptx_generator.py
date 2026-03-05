@@ -35,17 +35,19 @@ from ..utils.logger import get_logger
 logger = get_logger("pptx_generator")
 
 # 슬라이드 내 텍스트 영역 한계 (범위 이탈·겹침 방지)
+# 제목-본문 겹침 방지: 제목 영역·간격 넉넉히 확보
 SLIDE_WIDTH_INCHES = 13.33
 SLIDE_HEIGHT_INCHES = 7.5
 MARGIN_H = 0.5
-MARGIN_TOP = 0.25
+MARGIN_TOP = 0.35
 CONTENT_WIDTH = SLIDE_WIDTH_INCHES - 2 * MARGIN_H  # 12.33
-TITLE_BOX_TOP = MARGIN_TOP
-TITLE_BOX_HEIGHT = 1.15
-BODY_BOX_TOP = TITLE_BOX_TOP + TITLE_BOX_HEIGHT + 0.05
-BODY_BOX_HEIGHT = 4.6
-KEY_MSG_TOP = 6.15
+KEY_MSG_TOP = 6.1
 KEY_MSG_HEIGHT = 0.85
+TITLE_BOX_TOP = MARGIN_TOP
+TITLE_BOX_HEIGHT = 1.6   # 2줄 제목 + 줄간격 여유 (겹침 방지)
+TITLE_TO_BODY_GAP = 0.2   # 제목과 본문 사이 여백
+BODY_BOX_TOP = TITLE_BOX_TOP + TITLE_BOX_HEIGHT + TITLE_TO_BODY_GAP
+BODY_BOX_HEIGHT = KEY_MSG_TOP - BODY_BOX_TOP - 0.1  # 키메시지와 간격 유지
 MAX_TITLE_CHARS = 80
 MAX_BULLET_CHARS = 280
 MAX_KEY_MSG_CHARS = 120
@@ -178,11 +180,11 @@ class PPTXGenerator:
             slide_layout = self.prs.slide_layouts[min(6, len(self.prs.slide_layouts) - 1)]
         slide = self.prs.slides.add_slide(slide_layout)
 
-        # 제목 영역 (한 줄 또는 두 줄, 길이 제한)
+        # 제목 영역 (한 줄 또는 두 줄, 콘텐츠 슬라이드는 subtitle 크기로 겹침 방지)
         title_display = _truncate(title, MAX_TITLE_CHARS)
         if subtitle and str(subtitle).strip():
             title_display += "\n" + _truncate(str(subtitle).strip(), MAX_TITLE_CHARS)
-        self._add_title_textbox(slide, title_display)
+        self._add_title_textbox(slide, title_display, size_name="subtitle")
 
         # 본문 영역 (고정 높이, word_wrap, 불릿 수·길이 제한)
         bullets_to_show = (bullets or [])[:MAX_BULLETS_PER_SLIDE]
@@ -250,7 +252,7 @@ class PPTXGenerator:
         cols_count = len(headers)
         if rows_count < 2 or cols_count < 1:
             return
-        table_max_height = KEY_MSG_TOP - (TITLE_BOX_TOP + TITLE_BOX_HEIGHT) - 0.1
+        table_max_height = KEY_MSG_TOP - BODY_BOX_TOP - 0.1
         left = Inches(MARGIN_H)
         top = Inches(BODY_BOX_TOP)
         width = Inches(CONTENT_WIDTH)
@@ -352,8 +354,10 @@ class PPTXGenerator:
         self.prs.save(output_path)
         logger.info(f"PPTX 저장 완료: {output_path}")
 
-    def _add_title_textbox(self, slide, title: str) -> None:
-        """슬라이드에 제목 텍스트박스 추가 (word_wrap, 다중 단락 포맷)"""
+    def _add_title_textbox(
+        self, slide, title: str, size_name: str = "slide_title"
+    ) -> None:
+        """슬라이드에 제목 텍스트박스 추가 (word_wrap, 다중 단락). size_name으로 콘텐츠 슬라이드 제목은 'subtitle' 권장."""
         textbox = slide.shapes.add_textbox(
             Inches(MARGIN_H),
             Inches(TITLE_BOX_TOP),
@@ -366,7 +370,7 @@ class PPTXGenerator:
         for i, line in enumerate(lines[:2]):  # 최대 2줄
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.text = line.strip()
-            self._apply_title_format(p)
+            self._apply_title_format(p, size_name=size_name)
 
     def _add_key_message(self, slide, message: str) -> None:
         """슬라이드 하단에 핵심 메시지 추가 (고정 영역, word_wrap)"""

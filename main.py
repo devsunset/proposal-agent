@@ -223,8 +223,9 @@ def generate(
         console.print(f"[bold]제안서 유형:[/bold] {get_type_display_name(proposal_type)}")
     console.print()
 
-    # 출력 디렉토리 생성
+    # 출력 디렉토리 및 체크포인트 폴더 생성
     output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "_checkpoints").mkdir(parents=True, exist_ok=True)
 
     # 비동기 실행 (예외는 내부에서 잡아 반환해 Windows cp949 인코딩 오류 방지)
     out = asyncio.run(
@@ -636,9 +637,10 @@ def _run_manual_generate(
             f"[bold]작업 폴더:[/bold] {run_path}\n\n"
             "[bold]다음 단계:[/bold]\n"
             f"1. [cyan]{run_path}/{req_f}[/cyan] 파일을 열어 프롬프트를 확인하세요.\n"
-            "2. [시스템 프롬프트]와 [사용자 메시지]를 Google AI Studio에 입력하세요.\n"
-            "   → https://aistudio.google.com/\n"
-            f"3. Gemini 응답(JSON)을 [cyan]{run_path}/{res_f}[/cyan] 에 붙여넣으세요.\n"
+            "2. [시스템 프롬프트]와 [사용자 메시지]를 Google Gemini 또는 ChatGPT 등에 입력하세요.\n"
+            "   → Google Gemini: https://gemini.google.com/\n"
+            "   → ChatGPT: https://chat.openai.com/\n"
+            f"3. LLM 응답(JSON)을 [cyan]{run_path}/{res_f}[/cyan] 에 붙여넣으세요.\n"
             "4. [bold]python main.py continue[/bold] 를 실행하세요. (같은 run 폴더 자동 사용)",
             title="수동 모드 시작",
             border_style="yellow",

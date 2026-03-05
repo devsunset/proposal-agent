@@ -27,6 +27,9 @@ input/*
 output/*
 !output/.gitkeep
 
+# 수동 모드 작업 폴더 (run_* 요청/응답 파일, 커밋 제외)
+manual_req_res/
+
 # Templates (로컬용, 커밋 제외)
 templates/
 

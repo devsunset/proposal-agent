@@ -216,8 +216,13 @@ class ManualOrchestrator:
         state = self._load_state()
         step = state["current_step"]
         if step > TOTAL_STEPS:
-            logger.info("이미 모든 단계가 완료되었습니다.")
-            return True
+            # PPTX 생성이 이전에 실패했을 수 있음 → 파일 없으면 재생성
+            pptx_path = state.get("pptx_output_path")
+            if pptx_path and Path(pptx_path).exists():
+                logger.info("이미 모든 단계가 완료되었고 PPTX가 생성되어 있습니다.")
+                return True
+            logger.info("모든 단계 완료. PPTX가 없어 다시 생성합니다.")
+            return self._generate_pptx(state)
 
         response_path = self.manual_dir / _step_response_file_name(step)
         if not response_path.exists():
@@ -322,18 +327,21 @@ class ManualOrchestrator:
         return self._generate_pptx(state)
 
     def get_status(self) -> Dict[str, Any]:
-        """현재 진행 상태 반환"""
+        """현재 진행 상태 반환. done=True는 9단계 완료 후 PPTX 파일이 실제로 있을 때만."""
         if not self.state_file.exists():
             return {"started": False}
         state = self._load_state()
         step = state["current_step"]
         completed = step - 1
+        pptx_path = state.get("pptx_output_path")
+        all_steps_done = step > TOTAL_STEPS
+        pptx_exists = bool(pptx_path and Path(pptx_path).exists())
         status = {
             "started": True,
             "current_step": step,
             "total_steps": TOTAL_STEPS,
             "completed_steps": completed,
-            "done": step > TOTAL_STEPS,
+            "done": all_steps_done and pptx_exists,
             "project_name": state.get("project_name", ""),
             "client_name": state.get("client_name", ""),
             "steps": [],
@@ -506,12 +514,13 @@ Step {step}/{TOTAL_STEPS}: {description}
 =====================================
 
 [사용법]
-1. 아래 [시스템 프롬프트]와 [사용자 메시지]를 Gemini에 입력하세요.
-   추천: Google AI Studio (https://aistudio.google.com/)
-   - [시스템 프롬프트] → "System Instructions" 란에 입력
+1. 아래 [시스템 프롬프트]와 [사용자 메시지]를 Google Gemini 또는 ChatGPT 등에 입력하세요.
+   - Google Gemini: https://gemini.google.com/
+   - ChatGPT: https://chat.openai.com/
+   - [시스템 프롬프트] → 각 사이트의 시스템/지시 입력란에 입력
    - [사용자 메시지]  → 메인 입력란에 입력
 
-2. Gemini 응답(JSON 전체)을 복사하여 아래 파일에 붙여넣으세요:
+2. LLM 응답(JSON 전체)을 복사하여 아래 파일에 붙여넣으세요:
    → {self.manual_dir.as_posix()}/{response_file}
 
 3. 다음 명령 실행:
@@ -586,6 +595,8 @@ Step {step}/{TOTAL_STEPS}: {description}
             output_path=output_path,
             template_name=template or "",
         )
+        state["pptx_output_path"] = str(output_path.resolve())
+        self._save_state(state)
         logger.info("PPTX 생성 완료: {}", output_path)
         print(f"\n제안서가 생성되었습니다: {output_path}")
         return True
