@@ -855,7 +855,7 @@ def manual_step_auto(
     manual_dir: Path = typer.Option(
         Path("manual_req_res"),
         "--manual-dir",
-        help="수동 모드 기준 폴더. 기본값이면 최신 run_YYYYMMDD_HHMMSS 사용",
+        help="수동 모드 기준 폴더. 기본값이면 최신 run 사용 (RFP는 해당 run을 만든 generate <RFP> --manual 시 이미 지정됨)",
     ),
     headless: bool = typer.Option(
         False,
@@ -864,13 +864,15 @@ def manual_step_auto(
     ),
 ) -> None:
     """
-    수동 모드 브라우저 자동화: 현재 단계 request를 Gemini 또는 ChatGPT 웹에 전송하고 응답을 response 파일에 저장
+    수동 모드 브라우저 자동화: 현재 단계 request를 Gemini 또는 ChatGPT 웹에 전송하고 응답을 response 파일에 저장.
 
+    사용 순서: 먼저 generate <RFP경로> --manual 로 run 생성 후, 이 명령으로 해당 run의 현재 단계를 자동 전송.
     실행 전: playwright install chromium
 
     예시:
         python main.py manual-step --site gemini
         python main.py manual-step --site chatgpt
+        python main.py manual-step --site gemini --manual-dir manual_req_res/run_YYYYMMDD_HHMMSS
     """
     from src.manual import (
         ManualOrchestrator,
@@ -1271,10 +1273,12 @@ def help_cmd():
 
     # manual-step
     console.print("[bold]3. manual-step[/bold] - 수동 모드 브라우저 자동화 (Gemini/ChatGPT 웹)")
-    console.print("  [dim]현재 단계 request를 선택한 사이트(Gemini 또는 ChatGPT) 웹에 전송하고 응답을 response 파일에 저장합니다. 실행 전 playwright install chromium 필요.[/dim]\n")
-    console.print("  • [green]python main.py manual-step --site gemini[/green]")
-    console.print("  • [green]python main.py manual-step --site chatgpt[/green]")
-    console.print(f"  • [dim]특정 run 폴더 지정[/dim] [green]python main.py manual-step --site gemini --manual-dir manual_req_res/{manual_run_example}[/green]\n")
+    console.print("  [dim]먼저 [bold]generate <RFP경로> --manual[/bold] 로 수동 모드 run을 만든 뒤, 해당 run의 현재 단계 request를 선택한 사이트 웹에 전송해 응답을 저장합니다. 실행 전 playwright install chromium 필요.[/dim]\n")
+    console.print("  • [dim]기본 (최신 run 사용, run은 generate 시 RFP 지정으로 생성됨)[/dim]")
+    console.print("    [green]python main.py manual-step --site gemini[/green]")
+    console.print("    [green]python main.py manual-step --site chatgpt[/green]")
+    console.print(f"  • [dim]특정 run 폴더 지정 (generate --manual 시 만들어진 run_* 폴더)[/dim]")
+    console.print(f"    [green]python main.py manual-step --site gemini --manual-dir manual_req_res/{manual_run_example}[/green]\n")
 
     # status
     console.print("[bold]4. status[/bold] - 수동 모드 진행 상태 확인")
