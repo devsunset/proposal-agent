@@ -288,7 +288,7 @@ IT_SYSTEM_CONFIG = ProposalTypeConfig(
             title="ACTION PLAN",
             subtitle="구축 계획",
             weight=0.35,
-            min_slides=20,
+            min_slides=12,
             max_slides=35,
             special_focus=[
                 "WBS",

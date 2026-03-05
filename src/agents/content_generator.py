@@ -7,6 +7,7 @@ Cross-Phase Context, 산업 통계 주입, 네거티브 프롬프트 강화,
 
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -114,11 +115,13 @@ class ContentGenerator(BaseAgent):
         diagnostics: List[Dict[str, Any]] = []
         # Cross-Phase Context — 이전 Phase 핵심 결론 누적
         cross_phase_summaries: List[Dict[str, Any]] = []
-        # 체크포인트 디렉터리
+        # 체크포인트 디렉터리 (실행마다 run_YYYYMMDD_HHMMSS 폴더로 구분 → 이전 실행이 덮어씌워지지 않음)
         checkpoint_dir: Optional[Path] = None
         if settings.enable_checkpoint:
-            checkpoint_dir = settings.output_dir / "_checkpoints"
+            run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+            checkpoint_dir = settings.output_dir / "_checkpoints" / f"run_{run_id}"
             checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            logger.info("체크포인트 저장 경로: {}", checkpoint_dir)
 
         rfp_analysis: RFPAnalysis = input_data["rfp_analysis"]
 
@@ -970,61 +973,127 @@ Phase {phase_num}: {PHASE_TITLES[phase_num]}의 슬라이드 콘텐츠를 생성
             for b in bullets_data
         ]
 
-    def _extract_win_themes(self, phase1_raw: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Phase 1 응답에서 Win Theme 추출. 여러 키/형식 폴백."""
-        # 1) 최상위 win_themes
-        win_themes = phase1_raw.get("win_themes") or phase1_raw.get("winThemes")
-        if win_themes and isinstance(win_themes, list) and len(win_themes) > 0:
-            return win_themes
+    def _normalize_win_theme_item(self, item: Any) -> Optional[Dict[str, Any]]:
+        """Win Theme 항목을 name/description/evidence 형태로 정규화 (LLM이 key만 주거나 문자열인 경우 대비)."""
+        if isinstance(item, str) and item.strip():
+            return {"name": item.strip()[:80], "description": item.strip(), "evidence": []}
+        if not isinstance(item, dict):
+            return None
+        name = item.get("name") or item.get("key") or item.get("title") or ""
+        if isinstance(name, str) and name.strip():
+            pass
+        elif name:
+            name = str(name)[:80]
+        else:
+            desc = item.get("description") or item.get("rationale") or ""
+            if isinstance(desc, str) and desc.strip():
+                name = desc.strip()[:50]
+        if not name:
+            return None
+        evidence = item.get("evidence") or item.get("evidence_list") or []
+        if not isinstance(evidence, list):
+            evidence = [evidence] if evidence else []
+        return {
+            "name": name[:80] if isinstance(name, str) else str(name)[:80],
+            "description": item.get("description") or item.get("rationale") or name,
+            "evidence": [str(e) for e in evidence[:5] if e],
+            "related_phases": item.get("related_phases") if isinstance(item.get("related_phases"), list) else [],
+        }
 
-        # 2) slides 내 첫 슬라이드나 summary 슬라이드에서 themes 추출
+    def _extract_win_themes(self, phase1_raw: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Phase 1 응답에서 Win Theme 추출. 여러 키/형식 폴백 후 정규화."""
+        def as_list(val: Any) -> List[Dict[str, Any]]:
+            if not val or not isinstance(val, list):
+                return []
+            out = []
+            for item in val:
+                n = self._normalize_win_theme_item(item)
+                if n:
+                    out.append(n)
+            return out
+
+        # 1) 최상위 win_themes / winThemes
+        for key in ("win_themes", "winThemes"):
+            raw = phase1_raw.get(key)
+            if raw and isinstance(raw, list) and len(raw) > 0:
+                normalized = as_list(raw)
+                if normalized:
+                    return normalized
+
+        # 2) executive_summary 내 win_themes (Phase 1이 중첩 구조로 반환하는 경우)
+        es = phase1_raw.get("executive_summary")
+        if isinstance(es, dict):
+            for key in ("win_themes", "winThemes", "themes", "key_themes"):
+                raw = es.get(key)
+                if raw and isinstance(raw, list) and len(raw) > 0:
+                    normalized = as_list(raw)
+                    if normalized:
+                        return normalized
+
+        # 3) slides 내 첫 슬라이드나 summary 슬라이드에서 themes 추출
         slides = phase1_raw.get("slides", [])
         if isinstance(slides, list):
             for slide in slides[:3]:
                 if not isinstance(slide, dict):
                     continue
-                for key in ("win_themes", "winThemes", "themes", "key_themes"):
+                for key in ("win_themes", "winThemes", "themes", "key_themes", "core_themes", "strategic_themes"):
                     val = slide.get(key)
                     if val and isinstance(val, list) and len(val) > 0:
-                        return val
+                        normalized = as_list(val)
+                        if normalized:
+                            return normalized
                 # 슬라이드 제목이 Win Theme 관련이면 bullets를 theme 후보로
-                title = (slide.get("title") or "").lower()
-                if "win" in title or "theme" in title or "핵심" in title:
+                title = (slide.get("title") or slide.get("topic_title") or "").lower()
+                if "win" in title or "theme" in title or "핵심" in title or "요약" in title:
                     bullets = slide.get("bullets", [])
                     if bullets and isinstance(bullets, list):
                         themes = []
-                        for b in bullets[:3]:
+                        for b in bullets[:5]:
                             if isinstance(b, dict) and b.get("text"):
-                                themes.append({"name": b["text"][:50], "description": b.get("text", "")})
-                            elif isinstance(b, str):
+                                themes.append({"name": (b["text"] or "")[:50], "description": b.get("text", "")})
+                            elif isinstance(b, str) and b.strip():
                                 themes.append({"name": b[:50], "description": b})
                         if themes:
                             return themes
 
-        # 3) summary_win_themes 등 변형 키
-        for key in ("summary_win_themes", "key_win_themes", "themes"):
+        # 4) summary_win_themes 등 변형 키
+        for key in ("summary_win_themes", "key_win_themes", "themes", "core_themes", "strategic_themes"):
             val = phase1_raw.get(key)
             if val and isinstance(val, list) and len(val) > 0:
-                return val
+                normalized = as_list(val)
+                if normalized:
+                    return normalized
 
         logger.debug("Phase 1 응답에서 win_themes 배열을 찾지 못함. RFP 후보 또는 기본값 사용.")
         return []
 
     def _build_win_theme_models(self, win_themes: List[Dict[str, Any]]) -> Optional[List[WinTheme]]:
-        """Win Theme dict 리스트를 WinTheme 모델 리스트로 변환"""
+        """Win Theme dict 리스트를 WinTheme 모델 리스트로 변환 (name은 key/title 폴백)."""
         if not win_themes:
             return None
         models = []
         for wt in win_themes[:4]:
             try:
+                name = wt.get("name") or wt.get("key") or wt.get("title") or ""
+                if isinstance(name, str):
+                    name = name.strip()
+                if not name:
+                    continue
+                desc = wt.get("description") or wt.get("rationale") or name
+                evidence = wt.get("evidence")
+                if not isinstance(evidence, list):
+                    evidence = [evidence] if evidence else []
+                rp = wt.get("related_phases")
+                if not isinstance(rp, list):
+                    rp = []
                 models.append(WinTheme(
-                    name=wt.get("name", ""),
-                    description=wt.get("description", ""),
-                    evidence=wt.get("evidence", []),
-                    related_phases=wt.get("related_phases", []),
+                    name=name[:200],
+                    description=desc[:1000] if isinstance(desc, str) else str(desc)[:1000],
+                    evidence=[str(e) for e in evidence[:10] if e],
+                    related_phases=rp,
                 ))
             except Exception as e:
-                logger.warning(f"Win Theme 모델 변환 실패: {e}")
+                logger.debug("Win Theme 모델 변환 스킵: {}", e)
                 continue
         return models if models else None
 
@@ -1250,7 +1319,7 @@ content_examples 필드를 사용하여:
         phase_num: int,
         phase_content: PhaseContent,
     ) -> None:
-        """Phase 결과를 JSON으로 저장 (API 실패 시 재시작 불필요)."""
+        """Phase 결과를 JSON으로 저장 (API 실패 시 재시작 불필요). 저장 내용은 해당 실행에서 LLM이 반환한 그대로임."""
         if not checkpoint_dir:
             return
         try:
@@ -1259,6 +1328,6 @@ content_examples 필드를 사용하여:
                 phase_content.model_dump_json(indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
-            logger.debug("체크포인트 저장: {}", path.name)
+            logger.debug("체크포인트 저장: {}", path)
         except Exception as e:
             logger.warning("체크포인트 저장 실패 (Phase {}): {}", phase_num, str(e)[:100])
