@@ -10,7 +10,9 @@ RFP 문서(PDF/DOCX/TXT/PPTX)를 입력받아 Impact-8 구조의 PPTX 제안서�
 - PPTX 레이어: ProposalContent → Modern 스타일 PPTX 변환
 
 CLI 명령:
-- generate: RFP 경로로 제안서 생성 (옵션: 프로젝트명, 발주처, 유형, 템플릿, 출력 경로 등)
+- generate: RFP 경로로 제안서 생성 (옵션: 프로젝트명, 발주처, 유형, 템플릿, 출력 경로, --manual 수동 모드)
+- continue: 수동 모드에서 응답 파일 처리 후 다음 단계 (--manual 사용 시)
+- status: 수동 모드 진행 상태 확인
 - analyze: RFP 분석만 수행 (PPTX 미생성)
 - setup-company: 회사 프로필 대화형 설정 (Phase 6 품질 향상)
 - types: 지원 제안서 유형 목록
@@ -118,13 +120,33 @@ def generate(
         "--save-json",
         help="중간 JSON 파일 저장",
     ),
+    manual: bool = typer.Option(
+        False,
+        "--manual",
+        "-m",
+        help="수동 모드: LLM API 호출 없이 파일 기반으로 진행 (Gemini 수작업 질의용)",
+    ),
 ):
     """
     RFP 문서로부터 제안서(PPTX) 자동 생성 (Impact-8 Framework)
 
     예시:
         python main.py generate input/rfp.pdf -n "[프로젝트명]" -c "[발주처명]" -t marketing_pr
+        python main.py generate input/rfp.pdf --manual   # 수동 모드 (LLM API 없이)
     """
+    # 수동 모드: LLM API 불필요, 파일 기반으로 진행
+    if manual:
+        _run_manual_generate(
+            rfp_path=rfp_path,
+            project_name=project_name or "",
+            client_name=client_name or "",
+            proposal_type=proposal_type,
+            company_data=company_data,
+            output_dir=output_dir,
+            template=template,
+        )
+        return
+
     # API 키 확인 (LLM_PROVIDER에 따라 검사. ollama는 로컬이라 키 불필요)
     _settings = get_settings()
     _p = _settings.llm_provider
@@ -494,6 +516,261 @@ def _print_run_diagnostics(diagnostics: list):
             "✓" if d.get("json_ok") else "✗",
         )
     console.print(table)
+
+
+# ================================================================
+# 수동 모드 (LLM API 없이 파일 기반 진행)
+# ================================================================
+
+def _run_manual_generate(
+    rfp_path: Path,
+    project_name: str,
+    client_name: str,
+    proposal_type: Optional[str],
+    company_data: Path,
+    output_dir: Path,
+    template: Optional[str],
+) -> None:
+    """수동 모드: RFP 파싱 후 Step 1 요청 파일 생성"""
+    from src.manual import ManualOrchestrator, _step_request_file_name, _step_response_file_name
+
+    _valid_types = {p.value for p in ConfigProposalType}
+    if proposal_type and proposal_type not in _valid_types:
+        console.print(f"[red]지원하지 않는 제안서 유형: {proposal_type}[/red]")
+        console.print(f"사용 가능한 유형: {', '.join(_valid_types)}")
+        raise typer.Exit(1)
+
+    console.print(
+        Panel(
+            "[bold cyan]제안서 자동 생성 에이전트 - 수동 모드[/bold cyan]\n"
+            "[bold]Impact-8 Framework[/bold]\n\n"
+            "[dim]LLM API 없이 Gemini 수작업 질의로 진행합니다.[/dim]\n"
+            "[dim]총 9단계: RFP 분석 1회 + Phase 0~7 생성 8회[/dim]",
+            title="Proposal Agent (Manual Mode)",
+            border_style="yellow",
+        )
+    )
+    console.print(f"\n[bold]입력 파일:[/bold] {rfp_path}")
+    if project_name:
+        console.print(f"[bold]프로젝트명:[/bold] {project_name}")
+    if client_name:
+        console.print(f"[bold]발주처:[/bold] {client_name}")
+
+    orchestrator = ManualOrchestrator(manual_dir=Path("manual"))
+    try:
+        orchestrator.start(
+            rfp_path=rfp_path,
+            project_name=project_name,
+            client_name=client_name,
+            proposal_type=proposal_type,
+            company_data_path=company_data if company_data.exists() else None,
+            output_dir=output_dir,
+            template=template,
+        )
+    except Exception as e:
+        console.print(f"[red]오류: {e}[/red]")
+        raise typer.Exit(1)
+
+    req_f, res_f = _step_request_file_name(1), _step_response_file_name(1)
+    console.print(
+        Panel(
+            "[bold green]Step 1/9 준비 완료![/bold green]\n\n"
+            "[bold]다음 단계:[/bold]\n"
+            f"1. [cyan]manual/{req_f}[/cyan] 파일을 열어 프롬프트를 확인하세요.\n"
+            "2. [시스템 프롬프트]와 [사용자 메시지]를 Google AI Studio에 입력하세요.\n"
+            "   → https://aistudio.google.com/\n"
+            f"3. Gemini 응답(JSON)을 [cyan]manual/{res_f}[/cyan] 에 붙여넣으세요.\n"
+            "4. [bold]python main.py continue[/bold] 를 실행하세요.",
+            title="수동 모드 시작",
+            border_style="yellow",
+        )
+    )
+
+
+@app.command(name="continue")
+def manual_continue(
+    manual_dir: Path = typer.Option(
+        Path("manual"),
+        "--manual-dir",
+        help="수동 모드 작업 폴더 (기본: manual/)",
+    ),
+) -> None:
+    """
+    수동 모드: 현재 단계 응답 처리 및 다음 단계 요청 파일 생성
+
+    응답 파일(N_step_Phase명_response.txt)을 작성한 후 이 명령을 실행하세요.
+
+    예시:
+        python main.py continue
+    """
+    from src.manual import ManualOrchestrator, _step_request_file_name, _step_response_file_name
+
+    orchestrator = ManualOrchestrator(manual_dir=manual_dir)
+    try:
+        status = orchestrator.get_status()
+    except Exception as e:
+        console.print(f"[red]상태 확인 실패: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not status.get("started"):
+        console.print(
+            Panel(
+                "[red]수동 모드가 시작되지 않았습니다.[/red]\n\n"
+                "먼저 다음 명령을 실행하세요:\n"
+                "  [bold]python main.py generate <rfp파일> --manual[/bold]",
+                title="오류",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(1)
+
+    if status.get("done"):
+        console.print(
+            Panel(
+                "[green]모든 단계가 완료되었습니다. PPTX가 이미 생성되었습니다.[/green]",
+                border_style="green",
+            )
+        )
+        return
+
+    current_step = status["current_step"]
+    total_steps = status["total_steps"]
+    console.print(
+        Panel(
+            f"[bold]Step {current_step}/{total_steps} 처리 중...[/bold]",
+            border_style="cyan",
+        )
+    )
+
+    try:
+        done = orchestrator.continue_step()
+    except FileNotFoundError as e:
+        console.print(Panel(f"[red]파일 없음:[/red]\n{e}", title="오류", border_style="red"))
+        raise typer.Exit(1)
+    except ValueError as e:
+        console.print(Panel(f"[red]응답 파싱 오류:[/red]\n{e}", title="오류", border_style="red"))
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]오류: {e}[/red]")
+        raise typer.Exit(1)
+
+    if done:
+        console.print(
+            Panel(
+                "[bold green]모든 단계 완료! PPTX가 생성되었습니다.[/bold green]\n\n"
+                "[bold]출력 디렉토리:[/bold] output/",
+                title="Complete",
+                border_style="green",
+            )
+        )
+    else:
+        new_status = orchestrator.get_status()
+        next_step = new_status["current_step"]
+        next_desc = new_status["steps"][next_step - 1]["description"] if next_step <= total_steps else ""
+        next_req, next_res = _step_request_file_name(next_step), _step_response_file_name(next_step)
+        console.print(
+            Panel(
+                f"[green]Step {current_step} 완료![/green]\n\n"
+                f"[bold]다음 단계:[/bold] Step {next_step}/{total_steps} - {next_desc}\n\n"
+                f"1. [cyan]manual/{next_req}[/cyan] 파일을 열어 프롬프트를 확인하세요.\n"
+                f"2. Gemini에 입력하고 응답을 [cyan]manual/{next_res}[/cyan] 에 붙여넣으세요.\n"
+                "3. [bold]python main.py continue[/bold] 를 다시 실행하세요.",
+                title=f"Step {current_step} 완료",
+                border_style="yellow",
+            )
+        )
+
+
+@app.command()
+def status(
+    manual_dir: Path = typer.Option(
+        Path("manual"),
+        "--manual-dir",
+        help="수동 모드 작업 폴더 (기본: manual/)",
+    ),
+) -> None:
+    """
+    수동 모드 진행 상태 확인
+
+    예시:
+        python main.py status
+    """
+    from src.manual import ManualOrchestrator, _step_response_file_name
+
+    orchestrator = ManualOrchestrator(manual_dir=manual_dir)
+    try:
+        s = orchestrator.get_status()
+    except Exception as e:
+        console.print(f"[red]상태 확인 실패: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not s.get("started"):
+        console.print(
+            Panel(
+                "[yellow]수동 모드가 시작되지 않았습니다.[/yellow]\n\n"
+                "시작하려면:\n"
+                "  [bold]python main.py generate <rfp파일> --manual[/bold]",
+                border_style="yellow",
+            )
+        )
+        return
+
+    project = s.get("project_name") or ""
+    client = s.get("client_name") or ""
+    current = s["current_step"]
+    total = s["total_steps"]
+    if s.get("done"):
+        status_text = "[bold green]완료[/bold green]"
+    else:
+        status_text = f"[bold cyan]진행 중 (Step {current}/{total})[/bold cyan]"
+    console.print(
+        Panel(
+            f"[bold]프로젝트:[/bold] {project}\n"
+            f"[bold]발주처:[/bold] {client}\n"
+            f"[bold]상태:[/bold] {status_text}",
+            title="수동 모드 상태",
+            border_style="cyan",
+        )
+    )
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Step", justify="center", style="dim")
+    table.add_column("내용")
+    table.add_column("요청파일", justify="center")
+    table.add_column("응답파일", justify="center")
+    table.add_column("상태", justify="center")
+    for step_info in s["steps"]:
+        sn = step_info["step"]
+        req = "O" if step_info["request_ready"] else "-"
+        res = "O" if step_info["response_ready"] else "-"
+        if step_info["completed"]:
+            st = "완료"
+        elif step_info["current"]:
+            st = "대기중"
+        else:
+            st = "미진행"
+        table.add_row(str(sn), step_info["description"], req, res, st)
+    try:
+        console.print(table)
+    except Exception:
+        print(f"\n{'Step':<5} {'내용':<40} {'요청':^6} {'응답':^6} {'상태':^8}")
+        print("-" * 70)
+        for step_info in s["steps"]:
+            sn, req = step_info["step"], "O" if step_info["request_ready"] else "-"
+            res = "O" if step_info["response_ready"] else "-"
+            st = "완료" if step_info["completed"] else ("대기중" if step_info["current"] else "미진행")
+            try:
+                print(f"{sn:<5} {step_info['description']:<40} {req:^6} {res:^6} {st:^8}")
+            except Exception:
+                print(f"{sn:<5} Step {sn:<37} {req:^6} {res:^6} {st:^8}")
+    if not s.get("done") and current <= total:
+        current_res = _step_response_file_name(current)
+        try:
+            console.print(
+                f"\n[dim]현재 대기: manual/{current_res} 를 작성 후 "
+                "'python main.py continue' 실행[/dim]"
+            )
+        except Exception:
+            print(f"\n현재 대기: manual/{current_res} 를 작성 후 'python main.py continue' 실행")
 
 
 @app.command()
