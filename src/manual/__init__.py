@@ -5,15 +5,18 @@ from .manual_orchestrator import (
     _step_request_file_name,
     _step_response_file_name,
     create_run_dir,
+    find_run_by_rfp_path,
     resolve_manual_run_dir,
 )
-from .browser_automation import run_automation
+from .browser_automation import LOGIN_SIGNAL_FILENAME, run_automation
 
 __all__ = [
     "ManualOrchestrator",
     "_step_request_file_name",
     "_step_response_file_name",
     "create_run_dir",
+    "find_run_by_rfp_path",
+    "LOGIN_SIGNAL_FILENAME",
     "resolve_manual_run_dir",
     "run_automation",
 ]

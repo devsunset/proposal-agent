@@ -7,8 +7,9 @@
 실행 전: playwright install chromium
 """
 
+import time
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 from ..utils.logger import get_logger
 
@@ -61,6 +62,23 @@ def _combined_prompt(system_prompt: str, user_message: str) -> str:
     )
 
 
+# 로그인 완료 신호 파일 (manual-step이 대기, login 명령이 생성)
+LOGIN_SIGNAL_FILENAME = ".manual_step_login_done"
+
+
+def _wait_for_login_signal(signal_path: Path, timeout_sec: int = 300) -> None:
+    """signal_path 파일이 생성될 때까지 대기 (최대 timeout_sec). 생성 후 파일 삭제."""
+    for _ in range(max(1, timeout_sec // 2)):
+        if signal_path.exists():
+            try:
+                signal_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return
+        time.sleep(2)
+    raise TimeoutError(f"로그인 완료 신호 대기 시간({timeout_sec}초)을 초과했습니다. python main.py login 을 실행했는지 확인하세요.")
+
+
 def _run_gemini_flow(
     system_prompt: str,
     user_message: str,
@@ -68,25 +86,46 @@ def _run_gemini_flow(
     *,
     headless: bool = False,
     timeout_ms: int = 300_000,
+    login_signal_path: Optional[Path] = None,
+    browser_channel: Optional[str] = None,
+    user_data_dir: Optional[Path] = None,
 ) -> None:
     """Playwright로 Gemini 웹에서 프롬프트 전송 후 응답 텍스트를 response_path에 저장."""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
 
     combined = _combined_prompt(system_prompt, user_message)
     url = "https://gemini.google.com/app"
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
-        context = browser.new_context(
-            viewport={"width": 1280, "height": 900},
-            locale="ko-KR",
-        )
+        browser = None
+        if user_data_dir is not None:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=str(user_data_dir),
+                headless=headless,
+                channel=browser_channel,
+                viewport={"width": 1280, "height": 900},
+                locale="ko-KR",
+            )
+        else:
+            browser = p.chromium.launch(headless=headless, channel=browser_channel)
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 900},
+                locale="ko-KR",
+            )
         page = context.new_page()
         page.set_default_timeout(min(timeout_ms, 60_000))
 
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-            page.wait_for_load_state("networkidle", timeout=15_000)
+            try:
+                # Gemini/ChatGPT는 지속적으로 네트워크가 발생해 networkidle이 자주 타임아웃됨 → 실패해도 진행
+                page.wait_for_load_state("networkidle", timeout=15_000)
+            except PlaywrightTimeoutError:
+                pass
+
+            if login_signal_path is not None:
+                _wait_for_login_signal(login_signal_path, timeout_sec=timeout_ms // 1000)
 
             # 프롬프트 입력란 (Gemini 웹 UI: placeholder 또는 role)
             input_selector = 'textarea[placeholder*="물어보기"], textarea[placeholder*="Gemini"], [contenteditable="true"][aria-label*="입력"], [role="textbox"]'
@@ -139,8 +178,11 @@ def _run_gemini_flow(
             logger.info("Gemini 응답 저장: {} ({}자)", response_path, len(response_text))
 
         finally:
-            context.close()
-            browser.close()
+            try:
+                context.close()
+            finally:
+                if browser is not None:
+                    browser.close()
 
 
 def _run_chatgpt_flow(
@@ -150,25 +192,45 @@ def _run_chatgpt_flow(
     *,
     headless: bool = False,
     timeout_ms: int = 300_000,
+    login_signal_path: Optional[Path] = None,
+    browser_channel: Optional[str] = None,
+    user_data_dir: Optional[Path] = None,
 ) -> None:
     """Playwright로 ChatGPT 웹에서 프롬프트 전송 후 응답 텍스트를 response_path에 저장."""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
 
     combined = _combined_prompt(system_prompt, user_message)
     url = "https://chat.openai.com/"
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
-        context = browser.new_context(
-            viewport={"width": 1280, "height": 900},
-            locale="ko-KR",
-        )
+        browser = None
+        if user_data_dir is not None:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=str(user_data_dir),
+                headless=headless,
+                channel=browser_channel,
+                viewport={"width": 1280, "height": 900},
+                locale="ko-KR",
+            )
+        else:
+            browser = p.chromium.launch(headless=headless, channel=browser_channel)
+            context = browser.new_context(
+                viewport={"width": 1280, "height": 900},
+                locale="ko-KR",
+            )
         page = context.new_page()
         page.set_default_timeout(min(timeout_ms, 60_000))
 
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-            page.wait_for_load_state("networkidle", timeout=15_000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=15_000)
+            except PlaywrightTimeoutError:
+                pass
+
+            if login_signal_path is not None:
+                _wait_for_login_signal(login_signal_path, timeout_sec=timeout_ms // 1000)
 
             # ChatGPT 입력란
             input_selector = 'textarea[placeholder*="Message"], textarea[placeholder*="메시지"], #prompt-textarea, [contenteditable="true"]'
@@ -218,8 +280,11 @@ def _run_chatgpt_flow(
             logger.info("ChatGPT 응답 저장: {} ({}자)", response_path, len(response_text))
 
         finally:
-            context.close()
-            browser.close()
+            try:
+                context.close()
+            finally:
+                if browser is not None:
+                    browser.close()
 
 
 def run_automation(
@@ -229,6 +294,9 @@ def run_automation(
     *,
     headless: bool = False,
     timeout_sec: int = 300,
+    wait_for_login: bool = True,
+    browser_channel: Optional[str] = None,
+    user_data_dir: Optional[Path] = None,
 ) -> Path:
     """
     현재 단계 request 파일을 읽어 Gemini 또는 ChatGPT 웹에 전송하고, 응답을 response 파일에 저장.
@@ -239,6 +307,7 @@ def run_automation(
         site: "gemini" | "chatgpt"
         headless: True면 브라우저 창 숨김
         timeout_sec: 응답 대기 최대 초
+        wait_for_login: True면 사이트 열린 뒤 로그인 완료 신호(.manual_step_login_done) 대기 후 전송
 
     Returns:
         저장된 response 파일 경로
@@ -255,6 +324,12 @@ def run_automation(
     system_prompt, user_message = parse_request_file(request_path)
     timeout_ms = timeout_sec * 1000
 
+    login_signal_path: Optional[Path] = None
+    if wait_for_login:
+        login_signal_path = run_dir.parent / LOGIN_SIGNAL_FILENAME
+        if login_signal_path.exists():
+            login_signal_path.unlink(missing_ok=True)
+
     site_lower = site.strip().lower()
     if site_lower == "gemini":
         _run_gemini_flow(
@@ -263,6 +338,9 @@ def run_automation(
             response_path,
             headless=headless,
             timeout_ms=timeout_ms,
+            login_signal_path=login_signal_path,
+            browser_channel=browser_channel,
+            user_data_dir=user_data_dir,
         )
     elif site_lower == "chatgpt":
         _run_chatgpt_flow(
@@ -271,6 +349,9 @@ def run_automation(
             response_path,
             headless=headless,
             timeout_ms=timeout_ms,
+            login_signal_path=login_signal_path,
+            browser_channel=browser_channel,
+            user_data_dir=user_data_dir,
         )
     else:
         raise ValueError(f"지원하지 않는 사이트입니다: {site}. gemini 또는 chatgpt 를 지정하세요.")

@@ -74,6 +74,33 @@ def create_run_dir(base_dir: Path) -> Path:
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
+
+def find_run_by_rfp_path(rfp_path: Path, base_dir: Path = Path("manual_req_res")) -> Optional[Path]:
+    """
+    해당 RFP 파일로 이미 생성된 수동 모드 run 폴더가 있으면 그 경로 반환, 없으면 None.
+    state.json 의 rfp_path 와 절대 경로로 비교.
+    """
+    rfp_path = Path(rfp_path).resolve()
+    base_dir = Path(base_dir)
+    if not base_dir.is_dir():
+        return None
+    for d in sorted(base_dir.iterdir(), reverse=True):
+        if not d.is_dir() or not d.name.startswith("run_"):
+            continue
+        state_file = d / "state.json"
+        if not state_file.exists():
+            continue
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+            saved_rfp = state.get("rfp_path")
+            if not saved_rfp:
+                continue
+            if Path(saved_rfp).resolve() == rfp_path:
+                return d
+        except Exception:
+            continue
+    return None
+
 STEP_DESCRIPTIONS = {
     1: "RFP 분석",
     2: "Phase 0: HOOK (티저)",
