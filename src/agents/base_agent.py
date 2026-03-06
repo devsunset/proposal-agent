@@ -570,14 +570,32 @@ class BaseAgent(ABC):
         if not (text or "").strip():
             return {}
 
-        # 후보 문자열 수집 (코드 블록 우선, 그다음 중괄호 블록)
+        # 후보 문자열 수집 (코드 블록 우선, 그다음 균형 잡힌 중괄호 블록들)
         candidates: List[str] = []
-        for pattern in [
-            r"```(?:json)?\s*([\s\S]*?)\s*```",
-            r"(\{[\s\S]*\})",
-        ]:
-            for match in re.finditer(pattern, text):
-                candidates.append(match.group(1).strip())
+        for match in re.finditer(r"```(?:json)?\s*([\s\S]*?)\s*```", text):
+            candidates.append(match.group(1).strip())
+
+        # 텍스트 전체에서 균형 잡힌 { } 블록을 모두 추출 (Gemini UI 등에서 ``` 없이 "JSON" 다음에 오는 블록 처리)
+        i = 0
+        while i < len(text):
+            if text[i] == "{":
+                depth = 0
+                start = i
+                for j, c in enumerate(text[i:], i):
+                    if c == "{":
+                        depth += 1
+                    elif c == "}":
+                        depth -= 1
+                        if depth == 0:
+                            block = text[start : j + 1].strip()
+                            if len(block) > 10:
+                                candidates.append(block)
+                            i = j + 1
+                            break
+                else:
+                    i += 1
+            else:
+                i += 1
 
         # 중괄호로 시작하는 연속 영역만 있으면 한 번 더 시도 (가장 긴 것)
         if not candidates and "{" in text:
