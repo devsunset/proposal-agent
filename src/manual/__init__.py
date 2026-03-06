@@ -9,9 +9,10 @@ from .manual_orchestrator import (
     find_run_by_rfp_path,
     resolve_manual_run_dir,
 )
-from .browser_automation import run_automation
+from .browser_automation import launch_manual_browser, run_automation
 
 __all__ = [
+    "launch_manual_browser",
     "ManualOrchestrator",
     "STEP_DESCRIPTIONS",
     "_step_request_file_name",

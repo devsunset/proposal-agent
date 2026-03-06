@@ -901,6 +901,7 @@ def manual_run_all(
         python main.py manual-run --site gemini input/RFP_Sample_1.docx
         python main.py manual-run --site chatgpt
     """
+    from playwright.sync_api import sync_playwright
     from src.manual import (
         ManualOrchestrator,
         STEP_DESCRIPTIONS,
@@ -908,6 +909,7 @@ def manual_run_all(
         _step_response_file_name,
         create_run_dir,
         find_run_by_rfp_path,
+        launch_manual_browser,
         resolve_manual_run_dir,
         run_automation,
     )
@@ -979,67 +981,84 @@ def manual_run_all(
     console.print(
         Panel(
             f"[bold]수동 모드 1~{total_steps}단계 자동 실행[/bold] - [bold]{site_label}[/bold]\n\n"
-            "각 단계: request.txt → 브라우저 전송 → response.txt 저장 → 다음 단계 요청 생성.\n"
+            "한 개 브라우저로 1~9단계 연속 진행.\n"
             "Step 1에서 한 번 로그인(같은 터미널 Enter) 후 Step 2~9는 자동 진행.",
             title="manual-run",
             border_style="cyan",
         )
     )
 
-    while True:
-        status = orchestrator.get_status()
-        if status.get("done"):
-            console.print(Panel("[bold green]모든 단계 완료. PPTX가 생성되었습니다.[/bold green]\n\n출력: output/", title="manual-run 완료", border_style="green"))
-            return
-        current = status["current_step"]
-        if current > total_steps:
-            break
-        phase_desc = STEP_DESCRIPTIONS.get(current, "")
-        console.print(Panel(f"[bold]Step {current}/{total_steps}[/bold] [dim]| {phase_desc}[/dim]\nrequest 전송·응답 수집·저장 후 다음 단계 진행", title="진행", border_style="blue"))
-        if current == 1:
-            console.print(
-                Panel(
-                    "[bold yellow]브라우저가 열리면 로그인한 뒤,[/bold yellow] 이 터미널에서 [bold]Enter[/bold]를 눌러 주세요.\n"
-                    "(로그인 확인 후에만 프롬프트 전송이 진행됩니다.)",
-                    title="로그인 확인",
-                    border_style="yellow",
-                )
-            )
+    with sync_playwright() as p:
+        session = launch_manual_browser(
+            p,
+            site_clean,
+            headless=headless,
+            browser_channel=channel_for_launch,
+            user_data_dir=profile_dir,
+        )
         try:
-            run_automation(
-                resolved_dir,
-                current,
-                site_clean,
-                headless=headless,
-                timeout_sec=300,
-                wait_for_login=(current == 1),
-                login_via_stdin=True,
-                browser_channel=channel_for_launch,
-                user_data_dir=profile_dir,
-                step_label=f"Step {current}/{total_steps}",
-            )
-        except FileNotFoundError as e:
-            console.print(Panel(f"[red]파일 없음:[/red]\n{e}", title="오류", border_style="red"))
-            raise typer.Exit(1)
-        except Exception as e:
-            console.print(Panel(f"[red]자동화 실패:[/red]\n{e}", title="오류", border_style="red"))
-            raise typer.Exit(1)
-        try:
-            done = orchestrator.continue_step()
-        except FileNotFoundError as e:
-            console.print(Panel(f"[red]응답 파일 없음:[/red]\n{e}", title="오류", border_style="red"))
-            raise typer.Exit(1)
-        except ValueError as e:
-            console.print(Panel(f"[red]응답 파싱 오류:[/red]\n{e}", title="오류", border_style="red"))
-            raise typer.Exit(1)
-        except Exception as e:
-            console.print(Panel(f"[red]다음 단계 처리 실패:[/red]\n{e}", title="오류", border_style="red"))
-            raise typer.Exit(1)
-        if done:
-            console.print(Panel("[bold green]1~9단계 완료. PPTX가 생성되었습니다.[/bold green]\n\n출력: output/", title="manual-run 완료", border_style="green"))
-            return
-        next_phase = STEP_DESCRIPTIONS.get(current + 1, "")
-        console.print(f"[dim]Step {current} ({phase_desc}) 완료 → 다음: Step {current + 1} | {next_phase}[/dim]\n")
+            while True:
+                status = orchestrator.get_status()
+                if status.get("done"):
+                    console.print(Panel("[bold green]모든 단계 완료. PPTX가 생성되었습니다.[/bold green]\n\n출력: output/", title="manual-run 완료", border_style="green"))
+                    return
+                current = status["current_step"]
+                if current > total_steps:
+                    break
+                phase_desc = STEP_DESCRIPTIONS.get(current, "")
+                console.print(Panel(f"[bold]Step {current}/{total_steps}[/bold] [dim]| {phase_desc}[/dim]\nrequest 전송·응답 수집·저장 후 다음 단계 진행", title="진행", border_style="blue"))
+                if current == 1:
+                    console.print(
+                        Panel(
+                            "[bold yellow]브라우저가 열리면 로그인한 뒤,[/bold yellow] 이 터미널에서 [bold]Enter[/bold]를 눌러 주세요.\n"
+                            "(로그인 확인 후에만 프롬프트 전송이 진행됩니다.)",
+                            title="로그인 확인",
+                            border_style="yellow",
+                        )
+                    )
+                try:
+                    run_automation(
+                        resolved_dir,
+                        current,
+                        site_clean,
+                        headless=headless,
+                        timeout_sec=300,
+                        wait_for_login=(current == 1),
+                        login_via_stdin=True,
+                        browser_channel=channel_for_launch,
+                        user_data_dir=profile_dir,
+                        step_label=f"Step {current}/{total_steps}",
+                        reuse_session=session,
+                    )
+                except FileNotFoundError as e:
+                    console.print(Panel(f"[red]파일 없음:[/red]\n{e}", title="오류", border_style="red"))
+                    raise typer.Exit(1)
+                except Exception as e:
+                    console.print(Panel(f"[red]자동화 실패:[/red]\n{e}", title="오류", border_style="red"))
+                    raise typer.Exit(1)
+                try:
+                    done = orchestrator.continue_step()
+                except FileNotFoundError as e:
+                    console.print(Panel(f"[red]응답 파일 없음:[/red]\n{e}", title="오류", border_style="red"))
+                    raise typer.Exit(1)
+                except ValueError as e:
+                    console.print(Panel(f"[red]응답 파싱 오류:[/red]\n{e}", title="오류", border_style="red"))
+                    raise typer.Exit(1)
+                except Exception as e:
+                    console.print(Panel(f"[red]다음 단계 처리 실패:[/red]\n{e}", title="오류", border_style="red"))
+                    raise typer.Exit(1)
+                if done:
+                    console.print(Panel("[bold green]1~9단계 완료. PPTX가 생성되었습니다.[/bold green]\n\n출력: output/", title="manual-run 완료", border_style="green"))
+                    return
+                next_phase = STEP_DESCRIPTIONS.get(current + 1, "")
+                console.print(f"[dim]Step {current} ({phase_desc}) 완료 → 다음: Step {current + 1} | {next_phase}[/dim]\n")
+        finally:
+            ctx, _page, browser = session
+            try:
+                ctx.close()
+            finally:
+                if browser is not None:
+                    browser.close()
 
 
 @app.command()

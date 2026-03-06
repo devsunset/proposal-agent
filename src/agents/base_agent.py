@@ -607,7 +607,8 @@ class BaseAgent(ABC):
             except json.JSONDecodeError:
                 return None
 
-        for raw in candidates:
+        # 응답 파일에 요청/에코가 포함되면 여러 JSON 블록이 있을 수 있음. 실제 LLM 응답은 보통 마지막 블록.
+        for raw in reversed(candidates):
             if not raw:
                 continue
             result = _parse(raw)
