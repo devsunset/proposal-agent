@@ -5,8 +5,8 @@ RFP(제안요청서) PDF/DOCX/TXT/PPTX를 입력하면 **Impact-8 구조의 PPTX
 ## 핵심 특징
 
 - **Impact-8 Framework**: 실제 수주 성공 제안서 분석 기반 8-Phase 구조 (Phase 0 HOOK ~ Phase 7 INVESTMENT & ROI)
-- **다중 LLM 지원**: `.env`의 `LLM_PROVIDER`로 **Claude / Gemini / Groq** 중 선택
-- **RFP Chunking**: 섹션 우선순위 기반 청킹으로 긴 RFP(평가기준·요구사항 우선) 완전 분석 (기존 25,000자 → 40,000자)
+- **다중 LLM 지원**: `.env`의 `LLM_PROVIDER`로 **Claude / Gemini / Groq / Ollama** 중 선택
+- **RFP Chunking**: 섹션 우선순위 기반 청킹으로 긴 RFP(평가기준·요구사항 우선) 완전 분석 (최대 60,000자, `.env` RFP_CHUNK_MAX_CHARS)
 - **슬라이드 품질 자동 스코어링**: Action Title 준수·구체성·플레이스홀더 남용을 규칙 기반으로 자동 채점
 - **Cross-Phase Context**: Phase 간 핵심 결론을 다음 Phase에 전달해 내러티브 일관성 확보
 - **Phase Checkpoint**: 각 Phase 생성 후 `output/_checkpoints/run_YYYYMMDD_HHMMSS/` 에 자동 저장 → **체크포인트 재개**(`--resume-checkpoint run_...`)로 부족 Phase만 이어서 생성 또는 PPTX만 생성
@@ -51,7 +51,12 @@ python main.py generate input/rfp.pdf -n "프로젝트명" -c "발주처" -t mar
 # 체크포인트 재개 (중단된 run 이어서 진행)
 python main.py generate --resume-checkpoint run_20260305_095658
 
-# RFP 분석만 수행
+# 수동 모드 1~9단계 전체 자동 (Playwright) — 로그인만 사람이 함
+playwright install chromium
+python main.py manual-run --site gemini input/rfp.pdf -n "프로젝트명" -c "발주처"
+python main.py manual-run --site gemini input/rfp.pdf --skip-login-wait --headless  # 이미 로그인된 상태·테스트용
+
+# RFP 분석만 수행 (핵심 요구사항·평가 기준·산출물 상세 목록 출력)
 python main.py analyze input/rfp.pdf
 ```
 
@@ -110,7 +115,7 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator + chart/diagram_generat
 ## 디렉토리 구조
 
 ```
-├── main.py                     # CLI 엔트리포인트 (generate, continue, status, analyze, setup-company, types, info, templates)
+├── main.py                     # CLI (generate, continue, manual-run, status, analyze, setup-company, types, info, help)
 ├── docs/                       # 1.제안서_에이전트_소개, 2.INSTALL_AND_USAGE, 3.AGENT_GUIDE, 4.PROJECT_ANALYZ, 5.TO-DO
 ├── .env.example                # 환경 변수 예시 (복사 후 .env로 사용)
 ├── config/
@@ -137,16 +142,15 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator + chart/diagram_generat
 
 | 카테고리 | 기술 |
 |---------|------|
-| AI | Claude (Anthropic) / Gemini (Google) / Groq (.env LLM_PROVIDER로 선택) |
+| AI | Claude / Gemini / Groq / Ollama (.env LLM_PROVIDER로 선택) |
 | 문서 파싱 | pypdf, pdfplumber, python-docx, python-pptx |
 | PPTX 생성 | python-pptx, TemplateManager 디자인 시스템 (폰트 폴백 포함) |
 | 데이터 | Pydantic v2, JSON |
 | CLI | Typer, Rich |
 
-## 템플릿·폰트/디자인 가이드
+## 폰트/디자인 가이드
 
-- **템플릿 미지정** (`-T`/`--template` 생략): 빈 프레젠테이션 + 기본 디자인 시스템으로 생성 (권장)
-- **템플릿 지정** (`-T guide_template` 등): 해당 PPTX의 테마(색상·폰트)를 동적 추출해 적용
+- **PPTX 생성**: 템플릿 미사용 시 빈 프레젠테이션 + 기본 디자인 시스템(Modern 스타일)으로 생성. 플레이스홀더 정리로 디자인 깨짐 방지.
 - **폰트 폴백**: 템플릿 폰트가 시스템에 없으면 자동으로 맑은 고딕으로 대체 (Pretendard, Noto Sans KR 등)
 
 ## 가이드 문서 (docs/)
@@ -161,5 +165,6 @@ STEP 4: PPTX 렌더링 (TemplateManager + pptx_generator + chart/diagram_generat
 
 ## 주요 기능
 
-- RFP Chunking, Industry Stats DB, Slide Quality Scorer, Cross-Phase Context, Phase Checkpoint, Negative Prompts, setup-company CLI, 폰트 폴백
+- RFP Chunking(60,000자), Industry Stats DB, Slide Quality Scorer, Cross-Phase Context, Phase Checkpoint, Negative Prompts, setup-company CLI, 폰트 폴백
+- **수동 모드**: `generate --manual`, `continue`, `status`, **manual-run** (Gemini/ChatGPT 웹 자동화, `--skip-login-wait`, `--headless` 지원)
 - Impact-8 Framework, 다중 LLM, TemplateManager + pptx/chart/diagram generator
