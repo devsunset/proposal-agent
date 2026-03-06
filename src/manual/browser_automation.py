@@ -9,6 +9,7 @@
 실행 전: playwright install chromium
 """
 
+import json
 import re
 import time
 from datetime import datetime
@@ -70,6 +71,38 @@ def _extract_last_json_from_response(full_text: str) -> str:
     """캡처된 응답(요청+템플릿+실제 LLM 응답 혼합)에서 실제 LLM 응답 JSON만 추출.
     마지막 ```json 블록 또는 마지막 균형 잡힌 { } 블록을 반환. 없거나 너무 짧으면 원문 반환.
     """
+    def _looks_like_prompt_schema(s: str) -> bool:
+        """
+        프롬프트에 포함된 '예시 JSON/스키마'를 응답으로 오인 저장하는 경우가 잦아 방어.
+        - slide_type에 파이프(|)로 옵션 나열
+        - '슬라이드 제목 (★ ...)' 등 설명 문구
+        - '프로젝트명', '발주처명' 같은 플레이스홀더 값
+        """
+        t = (s or "").strip()
+        if not t:
+            return False
+        # 강한 시그널: 옵션 나열/설명 문구
+        schema_markers = (
+            "section_divider|content|two_column",
+            "slide_type\": \"section_divider|content",
+            "슬라이드 제목 (★",
+            "헤더1",
+            "데이터1",
+            "--- [시스템 지시] ---",
+            "--- [사용자 메시지] ---",
+            "위 내용을 분석하여 다음 JSON 형식으로",
+            "중요: 응답은 반드시 유효한 JSON만 포함",
+        )
+        if any(m in t for m in schema_markers):
+            return True
+        # 약한 시그널: 값 자체가 '프로젝트명/발주처명' 같은 템플릿
+        if "\"project_name\"" in t and ("\"프로젝트명\"" in t or "프로젝트명 미확인" in t):
+            return True
+        # 옵션 나열형 파이프(|)가 과도하면 스키마일 확률이 높음
+        if t.count("|") >= 6:
+            return True
+        return False
+
     if not (full_text or "").strip():
         return full_text or ""
     text = full_text.strip()
@@ -100,7 +133,18 @@ def _extract_last_json_from_response(full_text: str) -> str:
             i += 1
     if not candidates:
         return text
-    # 마지막 블록이 실제 LLM 응답(문서 순서상 맨 뒤에 옴)
+    # 일반적으로 마지막 블록이 실제 LLM 응답이지만, 프롬프트 예시 JSON이 잡힐 때가 있어 역순으로 검증
+    for _, cand in reversed(candidates):
+        if _looks_like_prompt_schema(cand):
+            continue
+        try:
+            parsed = json.loads(cand)
+            if isinstance(parsed, (dict, list)):
+                return cand
+        except Exception:
+            continue
+        return cand
+    # 전부 스키마처럼 보이면 마지막 후보 반환(기존 동작)
     _, last_content = candidates[-1]
     return last_content
 
@@ -160,10 +204,74 @@ _MIN_RESPONSE_LEN = 50
 _RESPONSE_POLL_START_MS = 300
 # 진행 로그 출력 간격(초). 응답 대기 중 "N자 수신, 완료 대기" 출력
 _RESPONSE_PROGRESS_LOG_INTERVAL_SEC = 5
-# 새 응답 대기 최대 시간(초). 이후에도 감지 안 되면 무조건 다음 단계 진행
-_RESPONSE_NEW_WAIT_MAX_SEC = 5
+# 새 응답 대기 최대 시간(초). 너무 짧으면 이전 단계 응답을 재저장할 수 있어 여유를 둠
+_RESPONSE_NEW_WAIT_MAX_SEC = 20
+# 스트리밍 안정화(길이 동일) 최대 대기 시간(초). UI가 계속 리렌더링되면 무한 대기처럼 보일 수 있어 상한을 둠
+_RESPONSE_STABILITY_MAX_SEC = 20
 # 응답 영역 selector 최초 대기(ms). 여기서 막히지 않도록 짧게
 _RESPONSE_FIRST_SELECTOR_TIMEOUT_MS = 4_000
+
+# 전송 후 JSON 파싱 기반 완료 판정(고정 대기 + 폴링)
+_JSON_FIRST_WAIT_MS = 15_000
+_JSON_RECHECK_INTERVAL_MS = 5_000
+# 90초는 너무 길어 상한을 둠(전송 후 총 대기)
+_JSON_MAX_WAIT_MS = 45_000
+
+
+def _parse_step_number(step_label: Optional[str]) -> Optional[int]:
+    """step_label(예: 'Step 2/9 | Phase 0: ...')에서 step 번호 추출."""
+    if not step_label:
+        return None
+    m = re.search(r"\bStep\s+(\d+)\s*/\s*9\b", step_label)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except Exception:
+        return None
+
+
+def _json_looks_like_previous_step(obj: object, step_num: Optional[int]) -> bool:
+    """
+    자동 수집이 실패하면 이전 단계(특히 Step1) 응답을 다시 저장하는 경우가 있음.
+    - Step2~9에서 'project_info/requirements_analysis'만 있고 'slides'가 없으면 Step1 응답일 확률이 높음
+    - Step2(HOOK)에서 teaser 핵심키(main_slogan/slides)가 없으면 실패 가능성
+    """
+    if step_num is None:
+        return False
+    if not isinstance(obj, dict):
+        return False
+    has_slides = isinstance(obj.get("slides"), list)
+    has_project_info = isinstance(obj.get("project_info"), dict)
+    has_req_analysis = isinstance(obj.get("requirements_analysis"), (dict, list))
+    has_teaser = ("main_slogan" in obj) or ("sub_message" in obj) or has_slides
+
+    if step_num == 1:
+        return False
+    if step_num == 2:
+        # teaser 단계인데 teaser 키가 없고 Step1 구조만 있으면 실패
+        return (not has_teaser) and (has_project_info or has_req_analysis)
+    # Step3~9: slides가 필수에 가깝다. 없고 Step1 구조만 있으면 실패
+    return (not has_slides) and (has_project_info or has_req_analysis)
+
+
+def _json_matches_step_expectation(obj: object, step_num: Optional[int]) -> bool:
+    """단계별로 기대하는 응답 형태인지 간단 검증 (자동 수집 실패 조기 탐지용)."""
+    if step_num is None:
+        # 라벨 파싱 실패 시에는 보수적으로 통과
+        return True
+    if not isinstance(obj, dict):
+        return False
+    if step_num == 1:
+        # Step1: RFP 분석. project_name 또는 project_info 중 하나는 있어야 함
+        return bool(obj.get("project_name") or isinstance(obj.get("project_info"), dict))
+    if step_num == 2:
+        # Step2: HOOK/Teaser. main_slogan 또는 slides(티저 슬라이드) 필요
+        slides = obj.get("slides")
+        return bool(obj.get("main_slogan") or (isinstance(slides, list) and len(slides) > 0))
+    # Step3~9: slides 리스트가 사실상 필수
+    slides = obj.get("slides")
+    return isinstance(slides, list) and len(slides) > 0
 
 
 def _get_last_response_length(page, selector: str) -> int:
@@ -292,6 +400,7 @@ def _wait_for_response_stable(
     last_message_selector: Optional[str] = None,
     baseline_len: int = 0,
     baseline_count: int = 0,
+    step_num: Optional[int] = None,
 ) -> None:
     """응답 영역이 보이면 폴링해, 새 응답이 나온 뒤 길이가 안정되면 완료로 간주하고 다음 단계 진행."""
     first_sel = response_selectors[0] if response_selectors else ""
@@ -355,7 +464,7 @@ def _wait_for_response_stable(
     prev_len = -1
     stable = 0
     forced_break = length < _MIN_RESPONSE_LEN
-    stability_deadline = time.time() + (1.5 if forced_break else (timeout_ms / 1000.0))
+    stability_deadline = time.time() + (1.5 if forced_break else min(_RESPONSE_STABILITY_MAX_SEC, (timeout_ms / 1000.0)))
     while time.time() < stability_deadline:
         try:
             length = _current_length()
@@ -369,6 +478,27 @@ def _wait_for_response_stable(
             except Exception:
                 pass
             last_progress_log = now
+        # 길이 안정화가 안 되더라도, 마지막 메시지에서 JSON 파싱이 성공하면 완료로 간주
+        if step_num is not None and sel_for_wait:
+            try:
+                latest_text = page.evaluate(
+                    """(selector) => {
+                        const els = document.querySelectorAll(selector);
+                        const last = els[els.length - 1];
+                        return last ? ((last.innerText || '')).trim() : '';
+                    }""",
+                    sel_for_wait,
+                )
+                cand = _extract_last_json_from_response(latest_text or "")
+                if cand and cand.strip().startswith("{"):
+                    try:
+                        parsed = json.loads(cand)
+                    except Exception:
+                        parsed = None
+                    if parsed is not None and _json_matches_step_expectation(parsed, step_num):
+                        return
+            except Exception:
+                pass
         if length >= _MIN_RESPONSE_LEN and length == prev_len:
             stable += 1
             if stable >= _RESPONSE_STABLE_COUNT:
@@ -394,6 +524,7 @@ def _run_gemini_flow(
     existing_page=None,
     close_on_exit: bool = True,
     first_step_goto: bool = False,
+    screenshot_path: Optional[Path] = None,
 ):
     """Playwright로 Gemini 웹에서 프롬프트 전송 후 응답 텍스트를 response_path에 저장.
     existing_page가 있으면 해당 페이지 재사용(close_on_exit 무시).
@@ -404,6 +535,7 @@ def _run_gemini_flow(
 
     combined = _combined_prompt(system_prompt, user_message)
     url = "https://gemini.google.com/app"
+    step_num = _parse_step_number(step_label)
 
     def _do_step(page, goto: bool) -> None:
         if goto:
@@ -433,11 +565,96 @@ def _run_gemini_flow(
         _step_log("(6/9)", f"전송 전 대기 ({_AFTER_FILL_DELAY_MS}ms)...", step_label=step_label)
         page.wait_for_timeout(_AFTER_FILL_DELAY_MS)
 
-        gemini_last_sel = '[data-message-author="model"]'
-        baseline_len = _get_last_response_length_multi(
-            page, ['[data-message-author="model"]', "article", '[class*="model"]', '[class*="response"]']
-        )
-        baseline_count = _get_response_block_count(page, gemini_last_sel)
+        # Gemini UI는 코드블록(code-container)로 JSON을 렌더링하는 경우가 많아 이를 우선 감지
+        gemini_code_sel = 'code[data-test-id="code-content"], code.code-container, .code-container'
+        gemini_last_sel = gemini_code_sel
+
+        _gemini_collect_script = """() => {
+            const skipPrompt = (txt) => {
+                if (!txt) return true;
+                const t = txt;
+                return (
+                    t.indexOf('--- [시스템 지시] ---') >= 0 ||
+                    t.indexOf('--- [사용자 메시지] ---') >= 0 ||
+                    t.indexOf('중요: 응답은 반드시 유효한 JSON만 포함') >= 0 ||
+                    t.indexOf('위 내용을 분석하여 다음 JSON 형식으로') >= 0 ||
+                    t.indexOf('section_divider|content|two_column') >= 0 ||
+                    t.indexOf('슬라이드 제목 (★') >= 0
+                );
+            };
+            const textOf = (el) => { try { return el ? ((el.innerText || el.textContent || '')).trim() : ''; } catch(e) { return ''; } };
+            const qsaLastText = (root, s) => {
+                try {
+                    const els = root.querySelectorAll(s);
+                    const last = els[els.length - 1];
+                    return textOf(last);
+                } catch(e) { return ''; }
+            };
+            const getRoots = () => {
+                // Gemini는 chat-app(web component) 아래 Shadow DOM에 렌더될 수 있어 함께 스캔
+                const roots = [document];
+                try {
+                    const app = document.querySelector('chat-app');
+                    if (app && app.shadowRoot) roots.push(app.shadowRoot);
+                } catch(e) {}
+                return roots;
+            };
+            const roots = getRoots();
+            const selAllLast = (s) => {
+                let out = '';
+                for (let i = 0; i < roots.length; i++) {
+                    const t = qsaLastText(roots[i], s);
+                    if (t) out = t;
+                }
+                return (out || '').trim();
+            };
+            const sel = (s) => { 
+                for (let i = 0; i < roots.length; i++) {
+                    try { 
+                        const el = roots[i].querySelector(s);
+                        const t = textOf(el);
+                        if (t) return t;
+                    } catch(e) {}
+                }
+                return '';
+            };
+
+            // 0) 가장 우선: 코드 블록(하이라이트된 JSON)
+            let t = selAllLast('code[data-test-id="code-content"]') || selAllLast('code.code-container') || selAllLast('.code-container');
+            if (t && t.length >= 40 && t.indexOf('{') >= 0 && !skipPrompt(t)) return t;
+
+            // 1) 모델(author=model) 마지막 메시지
+            t = selAllLast('[data-message-author="model"]');
+            if (t && t.length >= 50 && !skipPrompt(t)) return t;
+
+            // 2) 모델 메시지 전체에서 마지막 "유의미" 텍스트
+            try {
+                const els = document.querySelectorAll('[data-message-author="model"]');
+                for (let i = els.length - 1; i >= 0; i--) {
+                    const txt = ((els[i].innerText || '')).trim();
+                    if (txt && txt.length >= 50 && !skipPrompt(txt)) return txt;
+                }
+            } catch(e) {}
+
+            // 3) 마지막에 가까운 메시지/응답 컨테이너 후보
+            t = selAllLast('[class*="model"]') || selAllLast('[class*="response"]') || selAllLast('[class*="message"]');
+            if (t && t.length >= 50 && !skipPrompt(t)) return t;
+
+            // 4) fallback
+            t = sel('article') || sel('[role="main"]') || sel('main');
+            if (t && t.length >= 50 && !skipPrompt(t)) return t;
+            return (document.body.innerText || '').trim();
+        }"""
+
+        baseline_text = ""
+        baseline_json = ""
+        try:
+            baseline_text = page.evaluate(_gemini_collect_script) or ""
+            baseline_json = _extract_last_json_from_response(baseline_text) if baseline_text else ""
+        except Exception:
+            baseline_text = ""
+            baseline_json = ""
+
         _step_log("(7/9)", "전송 버튼 찾는 중...", step_label=step_label)
         send_btn = _find_send_button_gemini(page)
         if send_btn:
@@ -448,95 +665,72 @@ def _run_gemini_flow(
             page.wait_for_timeout(300)
             page.keyboard.press("Enter")
 
-        _step_log("(8/9)", "응답 수신 대기 중 (스트리밍 완료까지)...", step_label=step_label)
-        _wait_for_response_stable(
-            page,
-            ['[data-message-author="model"]', '[class*="model"]', '[class*="response"]', "article"],
-            timeout_ms,
-            last_message_selector=gemini_last_sel,
-            baseline_len=baseline_len,
-            baseline_count=baseline_count,
-        )
+        _step_log("(8/9)", f"전송 후 기본 대기({_JSON_FIRST_WAIT_MS // 1000}초)...", step_label=step_label)
+        page.wait_for_timeout(_JSON_FIRST_WAIT_MS)
 
-        # JSON 응답이 DOM에 나타날 때까지 최대 90초 대기 (Gemini 생성·렌더 시간 확보)
-        _step_log("(8b/9)", "응답 JSON 렌더 대기 중 (최대 90초)...", step_label=step_label)
-        try:
-            page.wait_for_function(
-                "() => (document.body && document.body.innerText && (document.body.innerText.indexOf('\"project_name\"') >= 0 || document.body.innerText.indexOf('\"key_requirements\"') >= 0))",
-                timeout=90_000,
-            )
-        except Exception:
-            pass
-        page.wait_for_timeout(2000)
+        # 전송 후부터는 code-content(JSON 코드블록) 파싱 성공을 완료 기준으로 사용
+        # 실패 시 5초 단위로 재체크 (최대 _JSON_MAX_WAIT_MS)
+        start = time.time()
+        to_save = ""
+        parsed = None
+        while True:
+            try:
+                response_text = page.evaluate(_gemini_collect_script) or ""
+            except Exception:
+                response_text = ""
 
-        _gemini_collect_script = """() => {
-            const sel = (s) => { try { const el = document.querySelector(s); return el ? (el.innerText || '').trim() : ''; } catch(e) { return ''; } };
-            const selAllLast = (s) => { try { const els = document.querySelectorAll(s); const last = els[els.length - 1]; return last ? (last.innerText || '').trim() : ''; } catch(e) { return ''; } };
-            let t = selAllLast('[data-message-author="model"]');
-            if (t && t.length >= 50) return t;
-            t = sel('article') || sel('[role="main"]') || sel('main');
-            if (t && t.length >= 50) return t;
-            t = selAllLast('[class*="message"]') || selAllLast('[class*="model"]') || selAllLast('[class*="response"]');
-            if (t && t.length >= 50) return t;
-            var all = document.querySelectorAll('*');
-            var best = '';
-            for (var i = 0; i < all.length; i++) {
-                var el = all[i];
-                var txt = (el.innerText || '').trim();
-                if (txt.length < 100 || txt.length > 50000) continue;
-                if ((txt.indexOf('"project_name"') >= 0 || txt.indexOf('"key_requirements"') >= 0) && (best === '' || txt.length < best.length))
-                    best = txt;
-            }
-            if (best) return best;
-            return (document.body.innerText || '').trim();
-        }"""
-        response_text = page.evaluate(_gemini_collect_script)
-        # 메인 프레임에 JSON 없으면 iframe에서 시도
-        if not (response_text and '"project_name"' in response_text and len(response_text) >= _MIN_RESPONSE_LEN):
-            for frame in page.frames:
-                if frame == page.main_frame:
-                    continue
-                try:
-                    cand = frame.evaluate(_gemini_collect_script)
-                    if cand and '"project_name"' in cand and len(cand) >= _MIN_RESPONSE_LEN:
-                        response_text = cand
-                        logger.info("Gemini 응답을 iframe에서 수집함")
-                        break
-                except Exception:
-                    continue
-        if not (response_text and len(response_text) >= _MIN_RESPONSE_LEN):
-            response_text = page.evaluate("() => document.body.innerText || ''").strip()
+            # 요청/템플릿/UI가 섞여 있으면 실제 LLM 응답 JSON만 추출해 저장
+            to_save = _extract_last_json_from_response(response_text or "")
+            if not to_save.strip():
+                to_save = (response_text or "").strip()
 
-        # 사이드바/UI 문구만 잡힌 경우(실제 응답 아님) → 잠시 대기 후 한 번 더 수집
-        _SIDEBAR_MARKERS = ("72시간", "임시 채팅", "표시되지 않으며", "Gemini 앱 활동")
-        _is_sidebar_only = (
-            response_text
-            and '"project_name"' not in response_text
-            and any(m in (response_text or "") for m in _SIDEBAR_MARKERS)
-        )
-        if _is_sidebar_only:
-            _step_log("(8c/9)", "사이드바만 수집됨, 5초 후 재수집...", step_label=step_label)
+            try:
+                parsed = json.loads(to_save) if to_save.strip().startswith("{") else None
+            except Exception:
+                parsed = None
+
+            ok = False
+            if parsed is not None:
+                ok = (
+                    (not baseline_json or to_save.strip() != baseline_json.strip())
+                    and (not _json_looks_like_previous_step(parsed, step_num))
+                    and _json_matches_step_expectation(parsed, step_num)
+                )
+
+            if ok:
+                break
+
+            elapsed_ms = int((time.time() - start) * 1000)
+            if elapsed_ms >= min(_JSON_MAX_WAIT_MS, timeout_ms):
+                raise RuntimeError(
+                    f"Gemini 응답 수집 실패: JSON 파싱/검증이 완료되지 않았습니다. step={step_num} response={response_path}"
+                )
+            _step_log("(8b/9)", f"JSON 파싱 실패/미완료 → {_JSON_RECHECK_INTERVAL_MS // 1000}초 후 재체크", step_label=step_label)
+            page.wait_for_timeout(_JSON_RECHECK_INTERVAL_MS)
+
+        # Step2~9에서 새 응답 감지가 실패하면 Step1 응답을 재저장할 수 있어, JSON 구조로 1회 재검증/재수집
+        # (위 루프에서 이미 검증 완료했으므로, 여기서는 안전망만 유지)
+        if _json_looks_like_previous_step(parsed, step_num) or (parsed is not None and not _json_matches_step_expectation(parsed, step_num)):
+            logger.warning("Gemini 응답이 이전 단계 응답으로 보입니다. 5초 후 재수집합니다. step=%s", step_num)
             page.wait_for_timeout(5000)
             response_text = page.evaluate(_gemini_collect_script)
-            if not (response_text and '"project_name"' in response_text):
-                for frame in page.frames:
-                    if frame == page.main_frame:
-                        continue
-                    try:
-                        cand = frame.evaluate(_gemini_collect_script)
-                        if cand and '"project_name"' in cand:
-                            response_text = cand
-                            break
-                    except Exception:
-                        continue
             if not (response_text and len(response_text) >= _MIN_RESPONSE_LEN):
                 response_text = page.evaluate("() => document.body.innerText || ''").strip()
+            to_save = _extract_last_json_from_response(response_text or "")
+            if not to_save.strip():
+                to_save = (response_text or "").strip()
+            try:
+                parsed = json.loads(to_save) if to_save.strip().startswith("{") else None
+            except Exception:
+                parsed = None
+            if _json_looks_like_previous_step(parsed, step_num) or (parsed is not None and not _json_matches_step_expectation(parsed, step_num)):
+                # 자동 실행이 계속 진행되면 response 파일이 전부 같은 값으로 덮이는 문제가 발생하므로 강제 중단
+                raise RuntimeError(
+                    f"Gemini 응답 수집 실패: Step {step_num}에서 새 응답을 감지하지 못했습니다. "
+                    f"이전 단계 응답이 반복 저장되는 상태입니다. response={response_path}"
+                )
 
-        # 요청/템플릿/UI가 섞여 있으면 실제 LLM 응답 JSON만 추출해 저장
-        to_save = _extract_last_json_from_response(response_text or "")
-        if not to_save.strip():
-            to_save = (response_text or "").strip()
-        if not to_save.strip().startswith("{") and '"project_name"' not in to_save:
+        if not to_save.strip().startswith("{") and '"project_name"' not in to_save and '"slides"' not in to_save:
             logger.warning("Gemini 응답에서 JSON을 찾지 못함. 대화 영역 선택자가 맞지 않을 수 있음. 수집 길이: %s", len(to_save))
         response_path.write_text(to_save, encoding="utf-8")
         _step_log("(9/9)", f"응답 수집·저장 완료: {len(to_save)}자 → {response_path}", step_label=step_label)
@@ -544,7 +738,16 @@ def _run_gemini_flow(
 
     if existing_page is not None:
         existing_page.set_default_timeout(min(timeout_ms, 60_000))
-        _do_step(existing_page, goto=first_step_goto)
+        try:
+            _do_step(existing_page, goto=first_step_goto)
+        except Exception:
+            if screenshot_path is not None:
+                try:
+                    existing_page.screenshot(path=str(screenshot_path), full_page=True)
+                    logger.warning("자동화 실패 스크린샷 저장: {}", screenshot_path)
+                except Exception:
+                    pass
+            raise
         return
 
     _step_log("(1/9)", "브라우저 시작 중 (Gemini)...", step_label=step_label)
@@ -575,6 +778,14 @@ def _run_gemini_flow(
         page.set_default_timeout(min(timeout_ms, 60_000))
         try:
             _do_step(page, goto=True)
+        except Exception:
+            if screenshot_path is not None:
+                try:
+                    page.screenshot(path=str(screenshot_path), full_page=True)
+                    logger.warning("자동화 실패 스크린샷 저장: {}", screenshot_path)
+                except Exception:
+                    pass
+            raise
         finally:
             if close_on_exit:
                 try:
@@ -599,6 +810,7 @@ def _run_chatgpt_flow(
     existing_page=None,
     close_on_exit: bool = True,
     first_step_goto: bool = False,
+    screenshot_path: Optional[Path] = None,
 ) -> None:
     """Playwright로 ChatGPT 웹에서 프롬프트 전송 후 응답 텍스트를 response_path에 저장.
     existing_page가 있으면 해당 페이지 재사용(close_on_exit 무시).
@@ -609,6 +821,7 @@ def _run_chatgpt_flow(
 
     combined = _combined_prompt(system_prompt, user_message)
     url = "https://chat.openai.com/"
+    step_num = _parse_step_number(step_label)
 
     def _do_step(page, goto: bool) -> None:
         if goto:
@@ -655,8 +868,11 @@ def _run_chatgpt_flow(
         page.wait_for_timeout(_AFTER_FILL_DELAY_MS)
 
         chatgpt_last_sel = '[data-testid="conversation-turn"]'
-        baseline_len = _get_last_response_length(page, chatgpt_last_sel)
-        baseline_count = _get_response_block_count(page, chatgpt_last_sel)
+        assistant_sel = '[data-message-author-role="assistant"]'
+        baseline_len = _get_last_response_length_multi(page, [assistant_sel, chatgpt_last_sel])
+        baseline_count = _get_response_block_count(page, assistant_sel)
+        if baseline_count <= 0:
+            baseline_count = _get_response_block_count(page, chatgpt_last_sel)
         _step_log("(7/9)", "전송 버튼 찾는 중...", step_label=step_label)
         send_btn = _find_send_button_chatgpt(page)
         if send_btn:
@@ -670,15 +886,24 @@ def _run_chatgpt_flow(
         _step_log("(8/9)", "응답 수신 대기 중 (스트리밍 완료까지)...", step_label=step_label)
         _wait_for_response_stable(
             page,
-            ['[data-testid="conversation-turn"]', '[class*="result"]', '[class*="response"]'],
+            [assistant_sel, '[data-testid="conversation-turn"]', '[class*="result"]', '[class*="response"]'],
             timeout_ms,
-            last_message_selector=chatgpt_last_sel,
+            last_message_selector=assistant_sel,
             baseline_len=baseline_len,
             baseline_count=baseline_count,
+            step_num=step_num,
         )
 
         response_text = page.evaluate(
             """() => {
+                // assistant turn 우선
+                const assistant = document.querySelectorAll('[data-message-author-role="assistant"]');
+                const lastAssistant = assistant[assistant.length - 1];
+                if (lastAssistant) {
+                    const t = (lastAssistant.innerText || '').trim();
+                    if (t) return t;
+                }
+                // 기존 fallback: 마지막 conversation-turn
                 const turns = document.querySelectorAll('[data-testid="conversation-turn"]');
                 const last = turns[turns.length - 1];
                 if (last) return (last.innerText || '').trim();
@@ -692,13 +917,59 @@ def _run_chatgpt_flow(
         to_save = _extract_last_json_from_response(response_text or "")
         if not to_save.strip():
             to_save = (response_text or "").strip()
+
+        # Step2~9에서 이전 단계(특히 Step1) 응답을 재저장했는지 1회 재검증/재수집
+        try:
+            parsed = json.loads(to_save) if to_save.strip().startswith("{") else None
+        except Exception:
+            parsed = None
+        if _json_looks_like_previous_step(parsed, step_num) or (parsed is not None and not _json_matches_step_expectation(parsed, step_num)):
+            logger.warning("ChatGPT 응답이 이전 단계 응답으로 보입니다. 5초 후 재수집합니다. step=%s", step_num)
+            page.wait_for_timeout(5000)
+            response_text = page.evaluate(
+                """() => {
+                    const assistant = document.querySelectorAll('[data-message-author-role="assistant"]');
+                    const lastAssistant = assistant[assistant.length - 1];
+                    if (lastAssistant) {
+                        const t = (lastAssistant.innerText || '').trim();
+                        if (t) return t;
+                    }
+                    const turns = document.querySelectorAll('[data-testid="conversation-turn"]');
+                    const last = turns[turns.length - 1];
+                    if (last) return (last.innerText || '').trim();
+                    return '';
+                }"""
+            )
+            if not (response_text and len(response_text) >= _MIN_RESPONSE_LEN):
+                response_text = page.evaluate("() => document.body.innerText || ''").strip()
+            to_save = _extract_last_json_from_response(response_text or "")
+            if not to_save.strip():
+                to_save = (response_text or "").strip()
+            try:
+                parsed = json.loads(to_save) if to_save.strip().startswith("{") else None
+            except Exception:
+                parsed = None
+            if _json_looks_like_previous_step(parsed, step_num) or (parsed is not None and not _json_matches_step_expectation(parsed, step_num)):
+                raise RuntimeError(
+                    f"ChatGPT 응답 수집 실패: Step {step_num}에서 새 응답을 감지하지 못했습니다. "
+                    f"이전 단계 응답이 반복 저장되는 상태입니다. response={response_path}"
+                )
         response_path.write_text(to_save, encoding="utf-8")
         _step_log("(9/9)", f"응답 수집·저장 완료: {len(to_save)}자 → {response_path}", step_label=step_label)
         logger.info("ChatGPT 응답 저장: {} ({}자)", response_path, len(to_save))
 
     if existing_page is not None:
         existing_page.set_default_timeout(min(timeout_ms, 60_000))
-        _do_step(existing_page, goto=first_step_goto)
+        try:
+            _do_step(existing_page, goto=first_step_goto)
+        except Exception:
+            if screenshot_path is not None:
+                try:
+                    existing_page.screenshot(path=str(screenshot_path), full_page=True)
+                    logger.warning("자동화 실패 스크린샷 저장: {}", screenshot_path)
+                except Exception:
+                    pass
+            raise
         return
 
     _step_log("(1/9)", "브라우저 시작 중 (ChatGPT)...", step_label=step_label)
@@ -729,6 +1000,14 @@ def _run_chatgpt_flow(
         page.set_default_timeout(min(timeout_ms, 60_000))
         try:
             _do_step(page, goto=True)
+        except Exception:
+            if screenshot_path is not None:
+                try:
+                    page.screenshot(path=str(screenshot_path), full_page=True)
+                    logger.warning("자동화 실패 스크린샷 저장: {}", screenshot_path)
+                except Exception:
+                    pass
+            raise
         finally:
             if close_on_exit:
                 try:
@@ -836,40 +1115,53 @@ def run_automation(
     existing_page = reuse_session[1] if reuse_session and len(reuse_session) >= 2 else None
     close_on_exit = existing_page is None
     first_step_goto = existing_page is not None and step == 1
+    screenshot_path = run_dir / f"{step}_step_automation_error.png"
 
-    if site_lower == "gemini":
-        _run_gemini_flow(
-            system_prompt,
-            user_message,
-            response_path,
-            headless=headless,
-            timeout_ms=timeout_ms,
-            login_signal_path=login_signal_path,
-            login_via_stdin=login_via_stdin,
-            browser_channel=browser_channel,
-            user_data_dir=user_data_dir,
-            step_label=effective_step_label,
-            existing_page=existing_page,
-            close_on_exit=close_on_exit,
-            first_step_goto=first_step_goto,
-        )
-    elif site_lower == "chatgpt":
-        _run_chatgpt_flow(
-            system_prompt,
-            user_message,
-            response_path,
-            headless=headless,
-            timeout_ms=timeout_ms,
-            login_signal_path=login_signal_path,
-            login_via_stdin=login_via_stdin,
-            browser_channel=browser_channel,
-            user_data_dir=user_data_dir,
-            step_label=effective_step_label,
-            existing_page=existing_page,
-            close_on_exit=close_on_exit,
-            first_step_goto=first_step_goto,
-        )
-    else:
-        raise ValueError(f"지원하지 않는 사이트입니다: {site}. gemini 또는 chatgpt 를 지정하세요.")
+    try:
+        if site_lower == "gemini":
+            _run_gemini_flow(
+                system_prompt,
+                user_message,
+                response_path,
+                headless=headless,
+                timeout_ms=timeout_ms,
+                login_signal_path=login_signal_path,
+                login_via_stdin=login_via_stdin,
+                browser_channel=browser_channel,
+                user_data_dir=user_data_dir,
+                step_label=effective_step_label,
+                existing_page=existing_page,
+                close_on_exit=close_on_exit,
+                first_step_goto=first_step_goto,
+                screenshot_path=screenshot_path,
+            )
+        elif site_lower == "chatgpt":
+            _run_chatgpt_flow(
+                system_prompt,
+                user_message,
+                response_path,
+                headless=headless,
+                timeout_ms=timeout_ms,
+                login_signal_path=login_signal_path,
+                login_via_stdin=login_via_stdin,
+                browser_channel=browser_channel,
+                user_data_dir=user_data_dir,
+                step_label=effective_step_label,
+                existing_page=existing_page,
+                close_on_exit=close_on_exit,
+                first_step_goto=first_step_goto,
+                screenshot_path=screenshot_path,
+            )
+        else:
+            raise ValueError(f"지원하지 않는 사이트입니다: {site}. gemini 또는 chatgpt 를 지정하세요.")
+    except Exception as e:
+        # 실패 시점 화면을 남겨 원인 추적 가능하게 (manual-run은 보통 reuse_session 사용)
+        if existing_page is not None:
+            try:
+                existing_page.screenshot(path=str(screenshot_path), full_page=True)
+                logger.warning("자동화 실패 스크린샷 저장: {}", screenshot_path)
+            except Exception:
+                pass
+        raise
 
     return response_path
