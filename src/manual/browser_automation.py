@@ -4,8 +4,7 @@
 - request 파일 내용을 읽어 → Gemini/ChatGPT 웹 입력란에 붙여넣기 → 전송 → 응답 수신 → response 파일에 저장
 - 1~9단계의 요청/응답 생성·파일 저장·다음 단계 진행 등 나머지 흐름은 기존 manual 오케스트레이션 그대로 사용
 
-사용: python main.py manual-step --site gemini
-     python main.py manual-run --site gemini
+사용: python main.py manual-run --site gemini  (또는 --site chatgpt)
 
 실행 전: playwright install chromium
 """
@@ -77,8 +76,8 @@ def _combined_prompt(system_prompt: str, user_message: str) -> str:
     )
 
 
-# 로그인 완료 신호 파일 (manual-step이 대기, login 명령이 생성)
-LOGIN_SIGNAL_FILENAME = ".manual_step_login_done"
+# 로그인 완료 신호 파일 (manual-run이 대기, login 명령이 생성)
+LOGIN_SIGNAL_FILENAME = ".manual_run_login_done"
 
 # 자동화 탐지 완화용 브라우저 인자 (Google/OpenAI 등이 봇으로 차단하는 것 완화)
 _BROWSER_ARGS = ["--disable-blink-features=AutomationControlled"]
@@ -121,8 +120,10 @@ _MIN_RESPONSE_LEN = 50
 _RESPONSE_POLL_START_MS = 300
 # 진행 로그 출력 간격(초). 응답 대기 중 "N자 수신, 완료 대기" 출력
 _RESPONSE_PROGRESS_LOG_INTERVAL_SEC = 5
-# 새 응답 대기 최대 시간(초). 이후에도 감지 안 되면 길이만으로 진행 시도
-_RESPONSE_NEW_WAIT_MAX_SEC = 10
+# 새 응답 대기 최대 시간(초). 이후에도 감지 안 되면 무조건 다음 단계 진행
+_RESPONSE_NEW_WAIT_MAX_SEC = 5
+# 응답 영역 selector 최초 대기(ms). 여기서 막히지 않도록 짧게
+_RESPONSE_FIRST_SELECTOR_TIMEOUT_MS = 4_000
 
 
 def _get_last_response_length(page, selector: str) -> int:
@@ -266,17 +267,25 @@ def _wait_for_response_stable(
     def _current_count() -> int:
         return _get_response_block_count(page, sel_for_wait) if sel_for_wait else 0
 
-    page.wait_for_selector(first_sel, timeout=timeout_ms)
+    # 응답 영역이 없어도 오래 막히지 않도록 짧은 타임아웃만 사용 (실패 시 바로 폴링 루프로)
+    first_wait_ms = min(_RESPONSE_FIRST_SELECTOR_TIMEOUT_MS, timeout_ms)
+    try:
+        page.wait_for_selector(first_sel, timeout=first_wait_ms)
+    except Exception:
+        pass
     initial_wait_ms = min_after_first_ms if min_after_first_ms is not None else _RESPONSE_POLL_START_MS
     page.wait_for_timeout(initial_wait_ms)
 
     deadline = time.time() + (timeout_ms / 1000.0)
     new_response_deadline = time.time() + _RESPONSE_NEW_WAIT_MAX_SEC
     last_progress_log = 0.0
-    # 1) 새 응답이 나올 때까지 폴링 (블록 개수 증가 또는 길이 증가로 감지, 최대 _RESPONSE_NEW_WAIT_MAX_SEC)
+    # 1) 새 응답이 나올 때까지 폴링 (최대 10초 후 무조건 다음 단계로)
     while time.time() < deadline:
-        length = _current_length()
-        count = _current_count()
+        try:
+            length = _current_length()
+            count = _current_count()
+        except Exception:
+            length, count = 0, 0
         now = time.time()
         if now - last_progress_log >= _RESPONSE_PROGRESS_LOG_INTERVAL_SEC:
             try:
@@ -290,19 +299,28 @@ def _wait_for_response_stable(
             break
         if baseline_count >= 0 and count > baseline_count and length >= 10:
             break
-        # 최대 대기 초과 시 내용만 있으면 진행 (DOM 구조 차이 대비)
-        if now >= new_response_deadline and length >= _MIN_RESPONSE_LEN:
+        # 최대 대기(10초) 초과 시 무조건 다음 단계로 진행 (감지 실패 시에도 멈추지 않음)
+        if now >= new_response_deadline:
+            try:
+                ts = datetime.now().strftime("%H:%M:%S")
+                print(f"{ts}  [응답 대기] {_RESPONSE_NEW_WAIT_MAX_SEC}초 경과, 다음 단계로 진행합니다.", flush=True)
+            except Exception:
+                pass
             break
         time.sleep(0.4)
     else:
         return
 
-    # 2) 길이 안정(스트리밍 종료) 체크: 연속 N회 동일하면 완료
+    # 2) 길이 안정(스트리밍 종료) 체크: 연속 N회 동일하면 완료. 10초 타임아웃으로 들어왔으면 짧게만 대기
     prev_len = -1
     stable = 0
-    deadline = time.time() + (timeout_ms / 1000.0)
-    while time.time() < deadline:
-        length = _current_length()
+    forced_break = length < _MIN_RESPONSE_LEN
+    stability_deadline = time.time() + (1.5 if forced_break else (timeout_ms / 1000.0))
+    while time.time() < stability_deadline:
+        try:
+            length = _current_length()
+        except Exception:
+            length = 0
         now = time.time()
         if now - last_progress_log >= _RESPONSE_PROGRESS_LOG_INTERVAL_SEC:
             try:
