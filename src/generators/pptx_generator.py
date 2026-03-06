@@ -108,10 +108,13 @@ class PPTXGenerator:
         self.template_manager = template_manager
         self.design = template_manager.design_system
         self.prs: Optional[Presentation] = None
+        # 템플릿 미사용 시 True → 플레이스홀더 제거 후 좌표 기반으로만 그려 겹침/디자인 깨짐 방지
+        self._no_template_mode: bool = False
 
     def create_presentation(self, template_name: str = "base_template") -> Presentation:
         """새 프레젠테이션 생성"""
         self.prs = self.template_manager.load_template(template_name)
+        self._no_template_mode = not bool((template_name or "").strip())
         return self.prs
 
     def get_slide_layout(self, layout_name: str, fallback_index: int = 0):
@@ -140,18 +143,39 @@ class PPTXGenerator:
             pass
         return slide
 
+    def _clear_placeholder_text(self, ph) -> None:
+        """플레이스홀더 내 기본 안내 문구('부제목을 입력해 주세요' 등) 완전 제거."""
+        try:
+            if not getattr(ph, "has_text_frame", False):
+                return
+            tf = ph.text_frame
+            tf.clear()
+            # clear() 후 모든 단락·런의 텍스트를 빈 문자열로 덮어써 기본 문구 미노출
+            for para in list(tf.paragraphs):
+                try:
+                    para.text = ""
+                    for run in list(para.runs):
+                        run.text = ""
+                except Exception:
+                    pass
+            # 단락이 없으면 빈 단락 하나 넣어서 placeholder가 비어 보이게
+            if len(tf.paragraphs) == 0:
+                p = tf.add_paragraph()
+                if p is not None:
+                    p.text = ""
+        except Exception:
+            pass
+
     def _add_slide_with_placeholders(self, layout):
         """
-        슬라이드 추가 후 플레이스홀더 유지, 기본 안내 텍스트만 지움.
-        플레이스홀더를 직접 채워 쓸 때 사용 (add_content_slide 등).
+        슬라이드 추가. 템플릿 미사용 시 플레이스홀더를 제거해 좌표 기반만 사용(겹침 방지).
+        템플릿 사용 시 플레이스홀더 유지, 기본 안내 텍스트만 지움.
         """
+        if getattr(self, "_no_template_mode", False):
+            return self._add_slide(layout)
         slide = self.prs.slides.add_slide(layout)
         for ph in slide.placeholders:
-            try:
-                if ph.has_text_frame:
-                    ph.text_frame.clear()
-            except Exception:
-                pass
+            self._clear_placeholder_text(ph)
         return slide
 
     def _add_slide_for_content(self, layout_name: str = "Title and Content_02") -> tuple:
@@ -189,13 +213,15 @@ class PPTXGenerator:
 
     def _fill_ph_text(self, ph, text: str, font_size_pt: float, bold: bool = False,
                       color: Optional[RGBColor] = None, font_name: Optional[str] = None) -> None:
-        """플레이스홀더에 단일 단락 텍스트 채우기."""
+        """플레이스홀더에 단일 단락 텍스트 채우기. 여백·줄바꿈으로 겹침 방지."""
         if ph is None:
             return
         try:
             tf = ph.text_frame
             tf.clear()
             tf.word_wrap = True
+            margin_emu = int(0.02 * 914400)
+            tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = margin_emu
             p = tf.paragraphs[0]
             p.text = text
             p.font.size = Pt(font_size_pt)
@@ -298,6 +324,8 @@ class PPTXGenerator:
             )
             title_tf = title_box.text_frame
             title_tf.word_wrap = True
+            margin_emu = int(0.02 * 914400)
+            title_tf.margin_left = title_tf.margin_right = title_tf.margin_top = title_tf.margin_bottom = margin_emu
             title_p = title_tf.paragraphs[0]
             title_p.text = _truncate(title, 100)
             title_p.font.name = self.template_manager.get_font_name("title")
@@ -305,9 +333,9 @@ class PPTXGenerator:
             title_p.font.bold = True
             title_p.font.color.rgb = STYLE_COLORS["primary"]
 
-        # ── 부제목: PH14 사용 (실측 T=4.201" H=0.227"), fallback: textbox T=4.164" ──
-        if subtitle:
-            ph14 = self._get_ph(slide, 14)
+        # ── 부제목: PH14 사용 (실측 T=4.201" H=0.227"). 없으면 비워 기본 문구 미노출 ──
+        ph14 = self._get_ph(slide, 14)
+        if subtitle and str(subtitle).strip():
             if ph14:
                 self._fill_ph_text(
                     ph14, _truncate(subtitle, 150),
@@ -322,11 +350,15 @@ class PPTXGenerator:
                 )
                 sub_tf = sub_box.text_frame
                 sub_tf.word_wrap = True
+                pad_emu = int(0.02 * 914400)
+                sub_tf.margin_left = sub_tf.margin_right = sub_tf.margin_top = sub_tf.margin_bottom = pad_emu
                 sub_p = sub_tf.paragraphs[0]
                 sub_p.text = _truncate(subtitle, 150)
                 sub_p.font.name = self.template_manager.get_font_name("body")
                 sub_p.font.size = Pt(15)
                 sub_p.font.color.rgb = STYLE_COLORS["secondary"]
+        elif ph14:
+            self._clear_placeholder_text(ph14)
 
         # 저작권/회사명 (하단 좌측, 실측: Slide 6 Rectangle 1 T=5.080")
         copy_box = slide.shapes.add_textbox(
@@ -383,9 +415,9 @@ class PPTXGenerator:
         else:
             self._add_content_title(slide, _truncate(title, MAX_TITLE_CHARS))
 
-        # ── PH14: 부제목 (12pt, 블루그레이) ─────────────────────────
+        # ── PH14: 부제목 (12pt, 블루그레이). 없으면 플레이스홀더 비움(기본 문구 미노출) ──
+        ph14 = self._get_ph(slide, 14)
         if subtitle and str(subtitle).strip():
-            ph14 = self._get_ph(slide, 14)
             if ph14:
                 self._fill_ph_text(
                     ph14, _truncate(str(subtitle).strip(), 120),
@@ -394,6 +426,8 @@ class PPTXGenerator:
                 )
             else:
                 self._add_content_subtitle(slide, _truncate(str(subtitle).strip(), 120))
+        elif ph14:
+            self._clear_placeholder_text(ph14)
 
         # ── PH16: 본문 불릿 (Body 영역) ──────────────────────────────
         bullets_to_show = (bullets or [])[:MAX_BULLETS_PER_SLIDE]
@@ -413,6 +447,8 @@ class PPTXGenerator:
                 tf = ph_body.text_frame
                 tf.clear()
                 tf.word_wrap = True
+                margin_emu = int(0.02 * 914400)
+                tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = margin_emu
                 for i, bullet in enumerate(bullets_to_show):
                     p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
                     bullet_char = "•" if bullet.level == 0 else "–"
@@ -427,13 +463,15 @@ class PPTXGenerator:
                     )
                     p.space_after = Pt(4)
             else:
-                # 플레이스홀더 없을 때 텍스트박스 fallback
+                # 플레이스홀더 없을 때 텍스트박스 fallback (제목/부제목과 겹치지 않음)
                 body_box = slide.shapes.add_textbox(
                     Inches(MARGIN_H), Inches(BODY_BOX_TOP),
                     Inches(CONTENT_WIDTH), Inches(BODY_BOX_HEIGHT),
                 )
                 tf = body_box.text_frame
                 tf.word_wrap = True
+                margin_emu = int(0.03 * 914400)
+                tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = margin_emu
                 for i, bullet in enumerate(bullets_to_show):
                     p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
                     bullet_char = "•" if bullet.level == 0 else "–"
@@ -595,7 +633,7 @@ class PPTXGenerator:
                 font_name=self.template_manager.get_font_name("title"),
             )
             return
-        # fallback: textbox
+        # fallback: textbox (템플릿 없을 때 겹침 방지용 고정 좌표)
         textbox = slide.shapes.add_textbox(
             Inches(MARGIN_H),
             Inches(TITLE_BOX_TOP),
@@ -604,6 +642,8 @@ class PPTXGenerator:
         )
         tf = textbox.text_frame
         tf.word_wrap = True
+        margin_emu = int(0.02 * 914400)
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = margin_emu
         lines = (title or "").strip().split("\n")
         for i, line in enumerate(lines[:2]):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
@@ -611,18 +651,15 @@ class PPTXGenerator:
             self._apply_title_format(p, size_name=size_name)
 
     def _add_content_title(self, slide, title: str) -> None:
-        """콘텐츠 슬라이드 제목 바 (18pt Bold, 네이비, 좌측 여백)."""
+        """콘텐츠 슬라이드 제목 바 (18pt Bold, 네이비). 고정 좌표로 겹침 방지."""
         textbox = slide.shapes.add_textbox(
             Inches(MARGIN_H), Inches(TITLE_BOX_TOP),
             Inches(CONTENT_WIDTH), Inches(TITLE_BOX_HEIGHT),
         )
         tf = textbox.text_frame
         tf.word_wrap = True
-        pad_emu = int(0.04 * 914400)
-        tf.margin_left = pad_emu
-        tf.margin_right = pad_emu
-        tf.margin_top = pad_emu
-        tf.margin_bottom = pad_emu
+        pad_emu = int(0.03 * 914400)
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = pad_emu
         p = tf.paragraphs[0]
         p.text = title
         p.font.name = self.template_manager.get_font_name("title")
@@ -631,18 +668,15 @@ class PPTXGenerator:
         p.font.color.rgb = STYLE_COLORS["primary"]
 
     def _add_content_subtitle(self, slide, subtitle: str) -> None:
-        """콘텐츠 슬라이드 부제목 바 (15pt, 좌측 여백)."""
+        """콘텐츠 슬라이드 부제목 바 (15pt). 제목 영역과 겹치지 않도록 고정 좌표."""
         textbox = slide.shapes.add_textbox(
             Inches(MARGIN_H), Inches(SUBTITLE_BOX_TOP),
             Inches(CONTENT_WIDTH), Inches(SUBTITLE_BOX_HEIGHT),
         )
         tf = textbox.text_frame
         tf.word_wrap = True
-        pad_emu = int(0.04 * 914400)
-        tf.margin_left = pad_emu
-        tf.margin_right = pad_emu
-        tf.margin_top = pad_emu
-        tf.margin_bottom = pad_emu
+        pad_emu = int(0.03 * 914400)
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = pad_emu
         p = tf.paragraphs[0]
         p.text = subtitle
         p.font.name = self.template_manager.get_font_name("body")
@@ -735,9 +769,11 @@ class PPTXGenerator:
     def _fill_column(
         self, textbox, column_title: str, bullets: List[BulletPoint]
     ) -> None:
-        """2단 레이아웃의 열 채우기 (word_wrap, 길이·개수 제한)"""
+        """2단 레이아웃의 열 채우기 (word_wrap·여백으로 겹침 방지)"""
         tf = textbox.text_frame
         tf.word_wrap = True
+        margin_emu = int(0.02 * 914400)
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = margin_emu
 
         p = tf.paragraphs[0]
         p.text = _truncate(column_title, MAX_TITLE_CHARS)
@@ -1272,6 +1308,8 @@ class PPTXGenerator:
             Inches(1.017), Inches(0.302),
         )
         num_tf = num_box.text_frame
+        pad_emu = int(0.02 * 914400)
+        num_tf.margin_left = num_tf.margin_right = num_tf.margin_top = num_tf.margin_bottom = pad_emu
         num_p = num_tf.paragraphs[0]
         num_p.text = num_str
         num_p.font.name = self.template_manager.get_font_name("title")
@@ -1287,6 +1325,7 @@ class PPTXGenerator:
         )
         title_tf = title_box.text_frame
         title_tf.word_wrap = True
+        title_tf.margin_left = title_tf.margin_right = title_tf.margin_top = title_tf.margin_bottom = pad_emu
         title_p = title_tf.paragraphs[0]
         title_p.text = title_display
         title_p.font.name = self.template_manager.get_font_name("title")
@@ -1304,6 +1343,7 @@ class PPTXGenerator:
             )
             sub_tf = sub_box.text_frame
             sub_tf.word_wrap = True
+            sub_tf.margin_left = sub_tf.margin_right = sub_tf.margin_top = sub_tf.margin_bottom = pad_emu
             sub_p = sub_tf.paragraphs[0]
             sub_p.text = sub_display
             sub_p.font.name = self.template_manager.get_font_name("body")

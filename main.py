@@ -901,6 +901,11 @@ def manual_run_all(
     ),
     output_dir: Path = typer.Option(Path("output"), "--output", "-o", path_type=Path, help="PPTX 출력 디렉터리 (신규 run 생성 시)"),
     template: Optional[str] = typer.Option(None, "--template", "-T", help="PPTX 템플릿 파일명·확장자 제외 (신규 run 생성 시)"),
+    skip_login_wait: bool = typer.Option(
+        False,
+        "--skip-login-wait",
+        help="이미 로그인된 상태일 때 Step 1에서 Enter 대기 생략 (테스트/자동화용)",
+    ),
 ) -> None:
     """
     수동 모드 1~9단계 전체 자동 실행: 각 단계마다 request.txt → 브라우저 전송 → response.txt 저장 → continue(다음 요청 생성) 반복.
@@ -1035,7 +1040,7 @@ def manual_run_all(
                     break
                 phase_desc = STEP_DESCRIPTIONS.get(current, "")
                 console.print(Panel(f"[bold]Step {current}/{total_steps}[/bold] [dim]| {phase_desc}[/dim]\nrequest 전송·응답 수집·저장 후 다음 단계 진행", title="진행", border_style="blue"))
-                if current == 1:
+                if current == 1 and not skip_login_wait:
                     console.print(
                         Panel(
                             "[bold yellow]브라우저가 열리면 로그인한 뒤,[/bold yellow] 이 터미널에서 [bold]Enter[/bold]를 눌러 주세요.\n"
@@ -1051,7 +1056,7 @@ def manual_run_all(
                         site_clean,
                         headless=headless,
                         timeout_sec=300,
-                        wait_for_login=(current == 1),
+                        wait_for_login=(current == 1) and not skip_login_wait,
                         login_via_stdin=True,
                         browser_channel=channel_for_launch,
                         user_data_dir=profile_dir,

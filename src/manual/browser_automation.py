@@ -458,33 +458,79 @@ def _run_gemini_flow(
             baseline_count=baseline_count,
         )
 
-        # 스트리밍 직후 DOM 안정화 대기 후 응답 수집 (대화 영역만, 사이드바/헤더 제외)
-        page.wait_for_timeout(800)
-        response_text = page.evaluate(
-            """() => {
-                const sel = (s) => { try { const el = document.querySelector(s); return el ? (el.innerText || '').trim() : ''; } catch(e) { return ''; } };
-                const selAllLast = (s) => { try { const els = document.querySelectorAll(s); const last = els[els.length - 1]; return last ? (last.innerText || '').trim() : ''; } catch(e) { return ''; } };
-                let t = selAllLast('[data-message-author="model"]');
-                if (t && t.length >= 50) return t;
-                t = sel('article') || sel('[role="main"]') || sel('main');
-                if (t && t.length >= 50) return t;
-                t = selAllLast('[class*="message"]') || selAllLast('[class*="model"]') || selAllLast('[class*="response"]');
-                if (t && t.length >= 50) return t;
-                var all = document.querySelectorAll('*');
-                var best = '';
-                for (var i = 0; i < all.length; i++) {
-                    var el = all[i];
-                    var txt = (el.innerText || '').trim();
-                    if (txt.length < 100 || txt.length > 50000) continue;
-                    if ((txt.indexOf('"project_name"') >= 0 || txt.indexOf('"key_requirements"') >= 0) && (best === '' || txt.length < best.length))
-                        best = txt;
-                }
-                if (best) return best;
-                return (document.body.innerText || '').trim();
-            }"""
-        )
+        # JSON 응답이 DOM에 나타날 때까지 최대 90초 대기 (Gemini 생성·렌더 시간 확보)
+        _step_log("(8b/9)", "응답 JSON 렌더 대기 중 (최대 90초)...", step_label=step_label)
+        try:
+            page.wait_for_function(
+                "() => (document.body && document.body.innerText && (document.body.innerText.indexOf('\"project_name\"') >= 0 || document.body.innerText.indexOf('\"key_requirements\"') >= 0))",
+                timeout=90_000,
+            )
+        except Exception:
+            pass
+        page.wait_for_timeout(2000)
+
+        _gemini_collect_script = """() => {
+            const sel = (s) => { try { const el = document.querySelector(s); return el ? (el.innerText || '').trim() : ''; } catch(e) { return ''; } };
+            const selAllLast = (s) => { try { const els = document.querySelectorAll(s); const last = els[els.length - 1]; return last ? (last.innerText || '').trim() : ''; } catch(e) { return ''; } };
+            let t = selAllLast('[data-message-author="model"]');
+            if (t && t.length >= 50) return t;
+            t = sel('article') || sel('[role="main"]') || sel('main');
+            if (t && t.length >= 50) return t;
+            t = selAllLast('[class*="message"]') || selAllLast('[class*="model"]') || selAllLast('[class*="response"]');
+            if (t && t.length >= 50) return t;
+            var all = document.querySelectorAll('*');
+            var best = '';
+            for (var i = 0; i < all.length; i++) {
+                var el = all[i];
+                var txt = (el.innerText || '').trim();
+                if (txt.length < 100 || txt.length > 50000) continue;
+                if ((txt.indexOf('"project_name"') >= 0 || txt.indexOf('"key_requirements"') >= 0) && (best === '' || txt.length < best.length))
+                    best = txt;
+            }
+            if (best) return best;
+            return (document.body.innerText || '').trim();
+        }"""
+        response_text = page.evaluate(_gemini_collect_script)
+        # 메인 프레임에 JSON 없으면 iframe에서 시도
+        if not (response_text and '"project_name"' in response_text and len(response_text) >= _MIN_RESPONSE_LEN):
+            for frame in page.frames:
+                if frame == page.main_frame:
+                    continue
+                try:
+                    cand = frame.evaluate(_gemini_collect_script)
+                    if cand and '"project_name"' in cand and len(cand) >= _MIN_RESPONSE_LEN:
+                        response_text = cand
+                        logger.info("Gemini 응답을 iframe에서 수집함")
+                        break
+                except Exception:
+                    continue
         if not (response_text and len(response_text) >= _MIN_RESPONSE_LEN):
             response_text = page.evaluate("() => document.body.innerText || ''").strip()
+
+        # 사이드바/UI 문구만 잡힌 경우(실제 응답 아님) → 잠시 대기 후 한 번 더 수집
+        _SIDEBAR_MARKERS = ("72시간", "임시 채팅", "표시되지 않으며", "Gemini 앱 활동")
+        _is_sidebar_only = (
+            response_text
+            and '"project_name"' not in response_text
+            and any(m in (response_text or "") for m in _SIDEBAR_MARKERS)
+        )
+        if _is_sidebar_only:
+            _step_log("(8c/9)", "사이드바만 수집됨, 5초 후 재수집...", step_label=step_label)
+            page.wait_for_timeout(5000)
+            response_text = page.evaluate(_gemini_collect_script)
+            if not (response_text and '"project_name"' in response_text):
+                for frame in page.frames:
+                    if frame == page.main_frame:
+                        continue
+                    try:
+                        cand = frame.evaluate(_gemini_collect_script)
+                        if cand and '"project_name"' in cand:
+                            response_text = cand
+                            break
+                    except Exception:
+                        continue
+            if not (response_text and len(response_text) >= _MIN_RESPONSE_LEN):
+                response_text = page.evaluate("() => document.body.innerText || ''").strip()
 
         # 요청/템플릿/UI가 섞여 있으면 실제 LLM 응답 JSON만 추출해 저장
         to_save = _extract_last_json_from_response(response_text or "")
