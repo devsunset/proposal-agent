@@ -9,6 +9,7 @@
 실행 전: playwright install chromium
 """
 
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -63,6 +64,45 @@ def parse_request_file(request_path: Path) -> Tuple[str, str]:
         system_prompt = sys_part.strip()
 
     return system_prompt, user_message
+
+
+def _extract_last_json_from_response(full_text: str) -> str:
+    """캡처된 응답(요청+템플릿+실제 LLM 응답 혼합)에서 실제 LLM 응답 JSON만 추출.
+    마지막 ```json 블록 또는 마지막 균형 잡힌 { } 블록을 반환. 없거나 너무 짧으면 원문 반환.
+    """
+    if not (full_text or "").strip():
+        return full_text or ""
+    text = full_text.strip()
+    candidates: list = []
+    for m in re.finditer(r"```(?:json)?\s*([\s\S]*?)\s*```", text):
+        block = (m.group(1) or "").strip()
+        if len(block) > 20:
+            candidates.append((m.start(), block))
+    i = 0
+    while i < len(text):
+        if text[i] == "{":
+            start = i
+            depth = 0
+            for j, c in enumerate(text[i:], i):
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        block = text[start : j + 1].strip()
+                        if len(block) > 20:
+                            candidates.append((start, block))
+                        i = j + 1
+                        break
+            else:
+                i += 1
+        else:
+            i += 1
+    if not candidates:
+        return text
+    # 마지막 블록이 실제 LLM 응답(문서 순서상 맨 뒤에 옴)
+    _, last_content = candidates[-1]
+    return last_content
 
 
 def _combined_prompt(system_prompt: str, user_message: str) -> str:
@@ -353,9 +393,11 @@ def _run_gemini_flow(
     step_label: Optional[str] = None,
     existing_page=None,
     close_on_exit: bool = True,
+    first_step_goto: bool = False,
 ):
     """Playwright로 Gemini 웹에서 프롬프트 전송 후 응답 텍스트를 response_path에 저장.
     existing_page가 있으면 해당 페이지 재사용(close_on_exit 무시).
+    first_step_goto=True면 재사용 시에도 한 번 URL로 이동(브라우저가 blank로 열린 경우 대비).
     """
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
@@ -416,7 +458,7 @@ def _run_gemini_flow(
             baseline_count=baseline_count,
         )
 
-        # 응답 텍스트 수집: 마지막 model 메시지만 사용(이전 대화와 구분)
+        # 응답 텍스트 수집: 마지막 model 메시지 또는 body
         response_text = page.evaluate(
             """() => {
                 const els = document.querySelectorAll('[data-message-author="model"]');
@@ -429,13 +471,17 @@ def _run_gemini_flow(
         if not (response_text and len(response_text) >= _MIN_RESPONSE_LEN):
             response_text = page.evaluate("() => document.body.innerText || ''").strip()
 
-        response_path.write_text((response_text or "").strip(), encoding="utf-8")
-        _step_log("(9/9)", f"응답 수집·저장 완료: {len(response_text)}자 → {response_path}", step_label=step_label)
-        logger.info("Gemini 응답 저장: {} ({}자)", response_path, len(response_text))
+        # 요청/템플릿/UI가 섞여 있으면 실제 LLM 응답 JSON만 추출해 저장
+        to_save = _extract_last_json_from_response(response_text or "")
+        if not to_save.strip():
+            to_save = (response_text or "").strip()
+        response_path.write_text(to_save, encoding="utf-8")
+        _step_log("(9/9)", f"응답 수집·저장 완료: {len(to_save)}자 → {response_path}", step_label=step_label)
+        logger.info("Gemini 응답 저장: {} ({}자)", response_path, len(to_save))
 
     if existing_page is not None:
         existing_page.set_default_timeout(min(timeout_ms, 60_000))
-        _do_step(existing_page, goto=False)
+        _do_step(existing_page, goto=first_step_goto)
         return
 
     _step_log("(1/9)", "브라우저 시작 중 (Gemini)...", step_label=step_label)
@@ -489,9 +535,11 @@ def _run_chatgpt_flow(
     step_label: Optional[str] = None,
     existing_page=None,
     close_on_exit: bool = True,
+    first_step_goto: bool = False,
 ) -> None:
     """Playwright로 ChatGPT 웹에서 프롬프트 전송 후 응답 텍스트를 response_path에 저장.
     existing_page가 있으면 해당 페이지 재사용(close_on_exit 무시).
+    first_step_goto=True면 재사용 시에도 한 번 URL로 이동(브라우저가 blank로 열린 경우 대비).
     """
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
@@ -577,13 +625,17 @@ def _run_chatgpt_flow(
         if not (response_text and len(response_text) >= _MIN_RESPONSE_LEN):
             response_text = page.evaluate("() => document.body.innerText || ''").strip()
 
-        response_path.write_text((response_text or "").strip(), encoding="utf-8")
-        _step_log("(9/9)", f"응답 수집·저장 완료: {len(response_text)}자 → {response_path}", step_label=step_label)
-        logger.info("ChatGPT 응답 저장: {} ({}자)", response_path, len(response_text))
+        # 요청/UI가 섞여 있으면 실제 LLM 응답 JSON만 추출해 저장
+        to_save = _extract_last_json_from_response(response_text or "")
+        if not to_save.strip():
+            to_save = (response_text or "").strip()
+        response_path.write_text(to_save, encoding="utf-8")
+        _step_log("(9/9)", f"응답 수집·저장 완료: {len(to_save)}자 → {response_path}", step_label=step_label)
+        logger.info("ChatGPT 응답 저장: {} ({}자)", response_path, len(to_save))
 
     if existing_page is not None:
         existing_page.set_default_timeout(min(timeout_ms, 60_000))
-        _do_step(existing_page, goto=False)
+        _do_step(existing_page, goto=first_step_goto)
         return
 
     _step_log("(1/9)", "브라우저 시작 중 (ChatGPT)...", step_label=step_label)
@@ -720,6 +772,7 @@ def run_automation(
     site_lower = site.strip().lower()
     existing_page = reuse_session[1] if reuse_session and len(reuse_session) >= 2 else None
     close_on_exit = existing_page is None
+    first_step_goto = existing_page is not None and step == 1
 
     if site_lower == "gemini":
         _run_gemini_flow(
@@ -735,6 +788,7 @@ def run_automation(
             step_label=effective_step_label,
             existing_page=existing_page,
             close_on_exit=close_on_exit,
+            first_step_goto=first_step_goto,
         )
     elif site_lower == "chatgpt":
         _run_chatgpt_flow(
@@ -750,6 +804,7 @@ def run_automation(
             step_label=effective_step_label,
             existing_page=existing_page,
             close_on_exit=close_on_exit,
+            first_step_goto=first_step_goto,
         )
     else:
         raise ValueError(f"지원하지 않는 사이트입니다: {site}. gemini 또는 chatgpt 를 지정하세요.")

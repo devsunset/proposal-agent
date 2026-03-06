@@ -890,6 +890,17 @@ def manual_run_all(
         path_type=Path,
         help="브라우저 프로필 폴더. 미지정 시 manual_req_res/.browser_profile_<site>",
     ),
+    project_name: Optional[str] = typer.Option(None, "--name", "-n", help="프로젝트명 (RFP 지정·신규 run 생성 시, 미입력 시 RFP에서 추출)"),
+    client_name: Optional[str] = typer.Option(None, "--client", "-c", help="발주처명 (RFP 지정·신규 run 생성 시, 미입력 시 RFP에서 추출)"),
+    company_data: Path = typer.Option(
+        Path("company_data/company_profile.json"),
+        "--company",
+        "-d",
+        path_type=Path,
+        help="회사 정보 JSON 경로 (신규 run 생성 시)",
+    ),
+    output_dir: Path = typer.Option(Path("output"), "--output", "-o", path_type=Path, help="PPTX 출력 디렉터리 (신규 run 생성 시)"),
+    template: Optional[str] = typer.Option(None, "--template", "-T", help="PPTX 템플릿 파일명·확장자 제외 (신규 run 생성 시)"),
 ) -> None:
     """
     수동 모드 1~9단계 전체 자동 실행: 각 단계마다 request.txt → 브라우저 전송 → response.txt 저장 → continue(다음 요청 생성) 반복.
@@ -899,6 +910,7 @@ def manual_run_all(
 
     예시:
         python main.py manual-run --site gemini input/RFP_Sample_1.docx
+        python main.py manual-run --site gemini input/RFP_Sample_1.docx -n "프로젝트명" -c "발주처"
         python main.py manual-run --site chatgpt
     """
     from playwright.sync_api import sync_playwright
@@ -924,25 +936,41 @@ def manual_run_all(
         if not rfp_path.exists():
             console.print(Panel(f"[red]RFP 파일이 없습니다:[/red]\n{rfp_path}", title="오류", border_style="red"))
             raise typer.Exit(1)
-        run_dir = find_run_by_rfp_path(rfp_path)
+        run_dir = find_run_by_rfp_path(rfp_path, base_dir=manual_dir)
         if run_dir is None:
-            run_dir = create_run_dir(Path("manual_req_res"))
-            company_data = Path("company_data/company_profile.json")
+            run_dir = create_run_dir(manual_dir)
+            company_data_resolved = company_data.resolve()
             orch = ManualOrchestrator(manual_dir=run_dir)
             try:
                 orch.start(
                     rfp_path=rfp_path,
-                    project_name="",
-                    client_name="",
+                    project_name=project_name or "",
+                    client_name=client_name or "",
                     proposal_type=None,
-                    company_data_path=company_data if company_data.exists() else None,
-                    output_dir=Path("output"),
-                    template=None,
+                    company_data_path=company_data_resolved if company_data_resolved.exists() else None,
+                    output_dir=output_dir,
+                    template=template,
                 )
             except Exception as e:
                 console.print(f"[red]run 생성 실패: {e}[/red]")
                 raise typer.Exit(1)
             console.print(f"[dim]RFP 기준 새 run 생성: {run_dir}[/dim]")
+        else:
+            # 기존 run 사용 시에도 -n/-c 를 주었으면 state에 반영 (PPTX 파일명·제안서 제목에 사용)
+            if (project_name and str(project_name).strip()) or (client_name and str(client_name).strip()):
+                _orch = ManualOrchestrator(manual_dir=run_dir)
+                if _orch.state_file.exists():
+                    _state = _orch._load_state()
+                    updated = False
+                    if project_name and str(project_name).strip():
+                        _state["project_name"] = str(project_name).strip()
+                        updated = True
+                    if client_name and str(client_name).strip():
+                        _state["client_name"] = str(client_name).strip()
+                        updated = True
+                    if updated:
+                        _orch._save_state(_state)
+                        console.print(f"[dim]지정한 프로젝트명/발주처 반영: -n {project_name or '(유지)'} -c {client_name or '(유지)'}[/dim]")
         resolved_dir = run_dir
     else:
         resolved_dir = resolve_manual_run_dir(manual_dir)
@@ -1349,8 +1377,17 @@ def help_cmd():
     # generate
     console.print("[bold]1. generate[/bold] - RFP 문서로 제안서(PPTX) 생성")
     console.print("  [dim]RFP를 분석한 뒤 Impact-8 구조의 제안서 콘텐츠를 만들고 PPTX로 저장합니다.[/dim]")
-    console.print("  [bold]필수:[/bold] RFP_PATH (단, --resume-checkpoint 사용 시 run_metadata.json 있으면 생략 가능)")
-    console.print("  [bold]선택(생략 시 기본):[/bold] -n·-c(RFP에서 추출), -t(자동 판별), -d(company_data/company_profile.json), -o(output), -T(기본 디자인), --save-json(미저장), --manual(API 모드), -r(없음)")
+    console.print("  [bold]필수:[/bold] RFP_PATH (단, -r/--resume-checkpoint 사용 시 run_metadata 있으면 생략 가능)")
+    console.print("  [bold]선택(생략 시 기본):[/bold]")
+    console.print("    [cyan]-n, --name[/cyan]       프로젝트명 (RFP에서 추출)")
+    console.print("    [cyan]-c, --client[/cyan]     발주처명 (RFP에서 추출)")
+    console.print("    [cyan]-t, --type[/cyan]       제안서 유형 (자동 판별)")
+    console.print("    [cyan]-d, --company[/cyan]    회사 정보 JSON (company_data/company_profile.json)")
+    console.print("    [cyan]-o, --output[/cyan]     출력 디렉터리 (output)")
+    console.print("    [cyan]-T, --template[/cyan]   PPTX 템플릿 파일명 (미지정 시 기본 디자인)")
+    console.print("    [cyan]--save-json[/cyan]      콘텐츠 JSON 저장 (미저장)")
+    console.print("    [cyan]--manual, -m[/cyan]     수동 모드·파일 기반 (API 모드)")
+    console.print("    [cyan]-r, --resume-checkpoint[/cyan]  체크포인트 재개 (없음)")
     console.print()
     _examples = [
         ("기본 실행 (프로젝트명·발주처 미입력 시 RFP에서 추출)", f"python main.py generate {rfp_example}"),
@@ -1371,7 +1408,8 @@ def help_cmd():
     console.print("[bold]2. continue[/bold] - 수동 모드: 다음 단계 진행")
     console.print("  [dim]수동 모드에서 응답 파일을 처리한 뒤 다음 단계 요청 파일을 생성합니다.[/dim]")
     console.print("  [bold]필수:[/bold] 없음")
-    console.print("  [bold]선택(생략 시 기본):[/bold] --manual-dir(manual_req_res → 최신 run 사용)")
+    console.print("  [bold]선택(생략 시 기본):[/bold]")
+    console.print("    [cyan]--manual-dir[/cyan]  수동 모드 기준 폴더 (manual_req_res → 최신 run)")
     console.print()
     console.print("  • [dim]기본 (최신 run 폴더 사용)[/dim]")
     console.print("    [green]python main.py continue[/green]\n")
@@ -1382,18 +1420,30 @@ def help_cmd():
     console.print("[bold]3. manual-run[/bold] - 수동 모드 1~9단계 전체 자동 실행 (로그인만 사람이 함)")
     console.print("  [dim]로그인만 사람이 하고, 나머지는 1~9단계 request→전송→response 저장→다음 단계를 반복해 PPTX까지 자동 생성. Step 1에서 한 번 로그인(같은 터미널 Enter) 후 2~9 자동 진행. 실행 전 playwright install chromium.[/dim]")
     console.print("  [bold]필수:[/bold] --site (gemini 또는 chatgpt)")
-    console.print("  [bold]선택(생략 시 기본):[/bold] RFP_PATH(없으면 최신 run), --manual-dir(manual_req_res), --browser-channel(chrome)")
+    console.print("  [bold]선택(생략 시 기본):[/bold]")
+    console.print("    [cyan]RFP_PATH[/cyan]         없으면 최신 run 사용")
+    console.print("    [cyan]-n, --name[/cyan]       프로젝트명 (신규 run·RFP 지정 시)")
+    console.print("    [cyan]-c, --client[/cyan]     발주처명 (신규 run·RFP 지정 시)")
+    console.print("    [cyan]-d, --company[/cyan]    회사 정보 JSON (company_data/company_profile.json)")
+    console.print("    [cyan]-o, --output[/cyan]     PPTX 출력 디렉터리 (output)")
+    console.print("    [cyan]-T, --template[/cyan]   PPTX 템플릿 파일명 (미지정 시 기본)")
+    console.print("    [cyan]--manual-dir[/cyan]     수동 모드 기준 폴더 (manual_req_res)")
+    console.print("    [cyan]--browser-channel[/cyan] chrome | msedge | chromium (chrome)")
     console.print()
     console.print("  • [dim]RFP 지정하여 1~9단계 한 번에 실행[/dim]")
     console.print(f"    [green]python main.py manual-run --site gemini {rfp_example}[/green]")
     console.print(f"    [green]python main.py manual-run --site chatgpt {rfp_example}[/green]")
+    console.print("  • [dim]프로젝트명·발주처 지정 (generate와 동일 옵션 사용)[/dim]")
+    console.print(f"    [green]python main.py manual-run --site gemini {rfp_example} -n \"프로젝트명\" -c \"발주처\"[/green]")
     console.print("  • [dim]최신 run으로 1~9단계 자동 실행[/dim]")
     console.print("    [green]python main.py manual-run --site gemini[/green]\n")
 
     # status
     console.print("[bold]4. status[/bold] - 수동 모드 진행 상태 확인")
     console.print("  [dim]현재 대기 중인 단계와 완료된 단계를 표시합니다.[/dim]")
-    console.print("  [bold]필수:[/bold] 없음  [bold]선택(생략 시 기본):[/bold] --manual-dir(manual_req_res → 최신 run)")
+    console.print("  [bold]필수:[/bold] 없음")
+    console.print("  [bold]선택(생략 시 기본):[/bold]")
+    console.print("    [cyan]--manual-dir[/cyan]  수동 모드 기준 폴더 (manual_req_res → 최신 run)")
     console.print()
     console.print("  • [green]python main.py status[/green]")
     console.print(f"  • [green]python main.py status --manual-dir manual_req_res/{manual_run_example}[/green]\n")
@@ -1401,14 +1451,17 @@ def help_cmd():
     # analyze
     console.print("[bold]5. analyze[/bold] - RFP 분석만 수행 (PPTX 미생성)")
     console.print("  [dim]RFP를 파싱·분석하여 결과만 출력합니다. 제안서 콘텐츠/PPTX는 생성하지 않습니다.[/dim]")
-    console.print("  [bold]필수:[/bold] RFP_PATH  [bold]선택:[/bold] 없음")
+    console.print("  [bold]필수:[/bold] RFP_PATH")
+    console.print("  [bold]선택:[/bold] 없음")
     console.print()
     console.print(f"  • [green]python main.py analyze {rfp_example}[/green]\n")
 
     # setup-company
     console.print("[bold]6. setup-company[/bold] - 회사 프로필 대화형 설정")
     console.print("  [dim]회사명·서비스·수행 실적·핵심 인력 등을 입력해 company_data/company_profile.json에 저장합니다.[/dim]")
-    console.print("  [bold]필수:[/bold] 없음  [bold]선택(생략 시 기본):[/bold] -o(company_data/company_profile.json)")
+    console.print("  [bold]필수:[/bold] 없음")
+    console.print("  [bold]선택(생략 시 기본):[/bold]")
+    console.print("    [cyan]-o, --output[/cyan]  저장 경로 (company_data/company_profile.json)")
     console.print()
     console.print("  • [green]python main.py setup-company[/green]")
     console.print("  • [green]python main.py setup-company -o company_data/my_profile.json[/green]\n")
