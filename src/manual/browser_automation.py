@@ -458,14 +458,29 @@ def _run_gemini_flow(
             baseline_count=baseline_count,
         )
 
-        # 응답 텍스트 수집: 마지막 model 메시지 또는 body
+        # 스트리밍 직후 DOM 안정화 대기 후 응답 수집 (대화 영역만, 사이드바/헤더 제외)
+        page.wait_for_timeout(800)
         response_text = page.evaluate(
             """() => {
-                const els = document.querySelectorAll('[data-message-author="model"]');
-                const last = els[els.length - 1];
-                if (last) return (last.innerText || '').trim();
-                const art = document.querySelector('article');
-                return art ? art.innerText.trim() : '';
+                const sel = (s) => { try { const el = document.querySelector(s); return el ? (el.innerText || '').trim() : ''; } catch(e) { return ''; } };
+                const selAllLast = (s) => { try { const els = document.querySelectorAll(s); const last = els[els.length - 1]; return last ? (last.innerText || '').trim() : ''; } catch(e) { return ''; } };
+                let t = selAllLast('[data-message-author="model"]');
+                if (t && t.length >= 50) return t;
+                t = sel('article') || sel('[role="main"]') || sel('main');
+                if (t && t.length >= 50) return t;
+                t = selAllLast('[class*="message"]') || selAllLast('[class*="model"]') || selAllLast('[class*="response"]');
+                if (t && t.length >= 50) return t;
+                var all = document.querySelectorAll('*');
+                var best = '';
+                for (var i = 0; i < all.length; i++) {
+                    var el = all[i];
+                    var txt = (el.innerText || '').trim();
+                    if (txt.length < 100 || txt.length > 50000) continue;
+                    if ((txt.indexOf('"project_name"') >= 0 || txt.indexOf('"key_requirements"') >= 0) && (best === '' || txt.length < best.length))
+                        best = txt;
+                }
+                if (best) return best;
+                return (document.body.innerText || '').trim();
             }"""
         )
         if not (response_text and len(response_text) >= _MIN_RESPONSE_LEN):
@@ -475,6 +490,8 @@ def _run_gemini_flow(
         to_save = _extract_last_json_from_response(response_text or "")
         if not to_save.strip():
             to_save = (response_text or "").strip()
+        if not to_save.strip().startswith("{") and '"project_name"' not in to_save:
+            logger.warning("Gemini 응답에서 JSON을 찾지 못함. 대화 영역 선택자가 맞지 않을 수 있음. 수집 길이: %s", len(to_save))
         response_path.write_text(to_save, encoding="utf-8")
         _step_log("(9/9)", f"응답 수집·저장 완료: {len(to_save)}자 → {response_path}", step_label=step_label)
         logger.info("Gemini 응답 저장: {} ({}자)", response_path, len(to_save))
