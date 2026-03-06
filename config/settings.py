@@ -150,9 +150,9 @@ class Settings(BaseModel):
     # -------------------------------------------------------------------------
     # 고도화 기능 활성화 옵션 (docs/5.TO-DO.md Phase 1~2)
     # -------------------------------------------------------------------------
-    # RFP 청킹: 의미 단위 분할로 25,000자 제한 해소
+    # RFP 청킹: 의미 단위 분할로 장문 RFP 전체 정보 활용
     enable_rfp_chunking: bool = os.getenv("ENABLE_RFP_CHUNKING", "true").lower() == "true"
-    rfp_chunk_max_chars: int = int(os.getenv("RFP_CHUNK_MAX_CHARS", "40000") or "40000")
+    rfp_chunk_max_chars: int = int(os.getenv("RFP_CHUNK_MAX_CHARS", "60000") or "60000")
 
     # Draft → Critique → Refine 사이클 (토큰 비용 3배, 기본 off)
     enable_self_refinement: bool = os.getenv("ENABLE_SELF_REFINEMENT", "false").lower() == "true"

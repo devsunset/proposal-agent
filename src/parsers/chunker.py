@@ -16,16 +16,18 @@ import re
 from typing import Dict, List, Optional
 
 
-# 우선순위가 높은 키워드 (평가 기준, 요구사항 관련)
+# 우선순위가 높은 키워드 (평가·요구사항·기술·산출물·선정 등 — RFP 핵심 전부 포함)
 PRIORITY_HIGH_KEYWORDS = [
-    "평가 기준", "평가기준", "평가 항목", "평가항목", "배점", "점수",
-    "요구사항", "요구 사항", "과업 범위", "과업내용", "수행 내용",
-    "업무 내용", "산출물", "선정 기준", "심사 기준",
+    "평가 기준", "평가기준", "평가 항목", "평가항목", "배점", "점수", "심사",
+    "요구사항", "요구 사항", "요구기술", "기술 요구", "기능 요구", "비기능 요구",
+    "과업 범위", "과업내용", "과업 내용", "수행 내용", "업무 내용", "세부 과업",
+    "산출물", "납품물", "선정 기준", "심사 기준", "제안 요청", "제안요청",
+    "계약 조건", "계약조건", "제안서 작성", "제안서 작성",
 ]
 
 PRIORITY_MEDIUM_KEYWORDS = [
-    "일정", "기간", "추진 일정", "수행 기간", "예산", "금액", "사업비",
-    "제출", "자격", "입찰", "과업 내용", "세부 과업",
+    "일정", "기간", "추진 일정", "수행 기간", "예산", "금액", "사업비", "예산편성",
+    "제출", "자격", "입찰", "참가자격", "수행 능력", "실적", "경력",
 ]
 
 # 섹션 헤딩 패턴 (한국 공공 문서 형식)
@@ -106,34 +108,34 @@ class RFPChunker:
                 parts.append(header + text)
                 used_chars += len(header) + len(text)
 
-        # 2단계: medium 우선순위 섹션 (앞 2,000자)
+        # 2단계: medium 우선순위 섹션 (앞 3,000자)
         for chunk in chunks:
             if chunk["priority"] != "medium":
                 continue
-            text = chunk["text"][:2000]
+            text = chunk["text"][:3000]
             if used_chars + len(text) + 100 > max_chars:
                 break
             header = f"\n\n### {chunk['section']}\n" if chunk["section"] else "\n\n"
             parts.append(header + text)
             used_chars += len(header) + len(text)
 
-        # 3단계: low 우선순위 섹션 (앞 500자, 공간 있을 때만)
+        # 3단계: low 우선순위 섹션 (앞 800자, 공간 있을 때만)
         for chunk in chunks:
             if chunk["priority"] != "low":
                 continue
-            text = chunk["text"][:500]
+            text = chunk["text"][:800]
             if used_chars + len(text) + 100 > max_chars:
                 break
             header = f"\n\n### {chunk['section']}\n" if chunk["section"] else "\n\n"
             parts.append(header + text)
             used_chars += len(header) + len(text)
 
-        # 4단계: 테이블 (남은 공간에)
+        # 4단계: 테이블 (남은 공간에, 최대 15개·개당 1000자까지 — raw_text에 이미 포함되어 있으면 보조)
         if tables and used_chars < max_chars - 500:
-            tables_text = "\n\n## 테이블 데이터\n"
-            for t in tables[:5]:
+            tables_text = "\n\n## 테이블 데이터(구조화)\n"
+            for t in tables[:15]:
                 try:
-                    t_str = json.dumps(t, ensure_ascii=False)[:500]
+                    t_str = json.dumps(t, ensure_ascii=False)[:1000]
                     if used_chars + len(t_str) + 100 > max_chars:
                         break
                     tables_text += t_str + "\n"

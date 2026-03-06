@@ -11,6 +11,11 @@ from ..utils.logger import get_logger
 
 logger = get_logger("rfp_analyzer")
 
+# RFP 분석 시 문서 정보 최대 활용 (DOCX 등 전체 내용 참조)
+RFP_ANALYSIS_TRUNCATE_CHARS = 60000  # 청킹 미사용 시 본문 최대 문자 수
+RFP_ANALYSIS_TABLES_MAX = 25          # 프롬프트에 포함할 테이블 개수
+RFP_ANALYSIS_TABLES_JSON_MAX_CHARS = 15000  # 테이블 JSON 최대 문자 수
+
 # RFP 분석 응답에 기대하는 최상위 필드 (요청 시 LLM에 필수 포함 유도)
 RFP_EXPECTED_FIELDS = [
     "project_name", "client_name", "project_overview", "project_type",
@@ -74,10 +79,12 @@ class RFPAnalyzer(BaseAgent):
         if not system_prompt:
             system_prompt = self._get_default_system_prompt()
 
-        # 입력 데이터 준비 — RFP Chunking으로 컨텍스트 품질 향상
+        # 입력 데이터 준비 — RFP Chunking으로 컨텍스트 품질 향상, 문서 구조·메타데이터 활용
         settings = get_settings()
         raw_text_full = input_data.get("raw_text", "")
         tables = input_data.get("tables", [])
+        document_structure = (input_data.get("document_structure") or "").strip()
+        metadata = input_data.get("metadata") or {}
 
         if settings.enable_rfp_chunking and len(raw_text_full) > 10000:
             chunker = RFPChunker()
@@ -92,21 +99,37 @@ class RFPAnalyzer(BaseAgent):
                 len(raw_text),
             )
         else:
-            raw_text = self._truncate_text(raw_text_full, 25000)
+            raw_text = self._truncate_text(raw_text_full, RFP_ANALYSIS_TRUNCATE_CHARS)
 
         tables_json = json.dumps(
-            tables[:10], ensure_ascii=False, indent=2
-        )[:5000]
+            tables[: RFP_ANALYSIS_TABLES_MAX], ensure_ascii=False, indent=2
+        )[: RFP_ANALYSIS_TABLES_JSON_MAX_CHARS]
+
+        meta_lines = []
+        if metadata.get("title"):
+            meta_lines.append(f"제목: {metadata['title']}")
+        if metadata.get("subject"):
+            meta_lines.append(f"주제: {metadata['subject']}")
+        if metadata.get("keywords"):
+            meta_lines.append(f"키워드: {metadata['keywords']}")
+        meta_block = "\n".join(meta_lines) if meta_lines else ""
+
+        structure_block = ""
+        if document_structure:
+            structure_block = f"""
+## 문서 구조(목차)
+{document_structure}
+"""
 
         user_message = f"""
 중요: 응답은 반드시 유효한 JSON만 포함해야 합니다. 마크다운(##, ###), 목록(-), 설명 없이, 오직 ```json 으로 감싼 코드 블록 한 개만 출력하세요.
 
 다음 RFP(제안요청서) 문서를 분석해주세요.
-
+{structure_block}{f'## 문서 메타데이터\n{meta_block}\n\n' if meta_block else ''}
 ## 문서 텍스트
 {raw_text}
 
-## 테이블 데이터
+## 테이블 데이터(구조화)
 {tables_json}
 
 위 내용을 분석하여 다음 JSON 형식으로 응답해주세요:

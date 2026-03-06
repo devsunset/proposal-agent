@@ -3,18 +3,46 @@ DOCX 문서 파서
 
 python-docx를 사용해 .docx/.doc 파일에서 텍스트, 테이블, 헤딩 기반 섹션, 메타데이터를 추출합니다.
 RFP가 워드 문서로 제공될 때 사용됩니다.
+- 단락·테이블을 문서 순서대로 raw_text에 포함 (요구기술·평가기준 등 누락 방지)
+- 머리글/바닥글, 문서 구조(섹션 목차), 메타데이터까지 최대한 추출하여 RFP 분석에 활용
 """
 
 from pathlib import Path
 from typing import Any, Dict, List
 
 from docx import Document
+from docx.oxml.table import CT_Tbl
+from docx.oxml.text.paragraph import CT_P
 from docx.table import Table
+from docx.text.paragraph import Paragraph
 
 from .base_parser import BaseParser
 from ..utils.logger import get_logger
 
 logger = get_logger("docx_parser")
+
+
+def _iter_block_items(parent):
+    """문서 내 단락(Paragraph)과 테이블(Table)을 문서 순서대로 yield."""
+    if hasattr(parent, "element") and hasattr(parent.element, "body"):
+        parent_elm = parent.element.body
+    else:
+        return
+    for child in parent_elm.iterchildren():
+        if isinstance(child, CT_P):
+            yield Paragraph(child, parent)
+        elif isinstance(child, CT_Tbl):
+            yield Table(child, parent)
+
+
+def _table_to_text(table: Table) -> str:
+    """테이블을 읽기 쉬운 텍스트(헤더 + 행들)로 변환."""
+    lines = []
+    for row in table.rows:
+        cells = [cell.text.strip() for cell in row.cells]
+        if any(cells):
+            lines.append(" | ".join(cells))
+    return "\n".join(lines) if lines else ""
 
 
 class DOCXParser(BaseParser):
@@ -30,40 +58,58 @@ class DOCXParser(BaseParser):
 
     def parse(self, file_path: Path) -> Dict[str, Any]:
         """
-        DOCX를 파싱하여 raw_text, tables, sections, metadata, styles 반환.
-
-        Args:
-            file_path: DOCX 파일 경로
-
-        Returns:
-            BaseParser 규격의 딕셔너리 + styles(사용 스타일 목록)
+        DOCX를 파싱하여 raw_text, tables, sections, metadata, styles, document_structure 반환.
+        본문·테이블·머리글/바닥글을 모두 raw_text에 반영하고, 문서 구조(목차)를 별도로 제공.
         """
         logger.info(f"DOCX 파싱 시작: {file_path}")
 
         doc = Document(file_path)
+        body_text = self.extract_text(file_path)
+        tables = self.extract_tables(file_path)
+        sections = self._extract_sections(doc)
+        metadata = self._extract_metadata(doc)
+        header_footer = self._extract_headers_footers(doc)
+        document_structure = self._build_document_structure(sections)
+
+        # 본문 + 머리글/바닥글을 합쳐 RFP 분석 시 모든 정보 참조 가능하게
+        raw_text_parts = []
+        if header_footer.strip():
+            raw_text_parts.append("[머리글·바닥글]\n" + header_footer.strip())
+        raw_text_parts.append(body_text)
+        raw_text = "\n\n".join(raw_text_parts)
 
         result = {
-            "raw_text": self.extract_text(file_path),
-            "tables": self.extract_tables(file_path),
-            "sections": self._extract_sections(doc),
-            "metadata": self._extract_metadata(doc),
+            "raw_text": raw_text,
+            "tables": tables,
+            "sections": sections,
+            "metadata": metadata,
             "styles": self._extract_styles(doc),
+            "document_structure": document_structure,
         }
 
         logger.info(
             f"DOCX 파싱 완료: {len(result['raw_text'])} 문자, "
-            f"{len(result['tables'])} 테이블, "
-            f"{len(result['sections'])} 섹션"
+            f"{len(result['tables'])} 테이블, {len(result['sections'])} 섹션, "
+            f"구조 {len(document_structure)}항목"
         )
 
         return result
 
     def extract_text(self, file_path: Path) -> str:
-        """전체 텍스트 추출"""
+        """전체 텍스트 추출 (단락 + 테이블을 문서 순서대로 포함, 요구기술·평가기준 등 누락 방지)"""
         try:
             doc = Document(file_path)
-            paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-            return "\n".join(paragraphs)
+            parts = []
+            for block in _iter_block_items(doc):
+                if isinstance(block, Paragraph):
+                    text = block.text.strip()
+                    if text:
+                        parts.append(text)
+                elif isinstance(block, Table):
+                    table_text = _table_to_text(block)
+                    if table_text:
+                        parts.append("[테이블]\n" + table_text)
+            return "\n\n".join(parts)
         except Exception as e:
             logger.error(f"텍스트 추출 실패: {e}")
             return ""
@@ -107,6 +153,35 @@ class DOCXParser(BaseParser):
             "rows": data_rows,
             "raw_data": rows,
         }
+
+    def _extract_headers_footers(self, doc: Document) -> str:
+        """머리글·바닥글 텍스트 추출 (RFP 제목·문서번호 등이 있을 수 있음)."""
+        parts = []
+        try:
+            for section in doc.sections:
+                for part_name, part in [("머리글", section.header), ("바닥글", section.footer)]:
+                    if part is None:
+                        continue
+                    paras = [p.text.strip() for p in part.paragraphs if p.text.strip()]
+                    if paras:
+                        parts.append(f"{part_name}: " + " ".join(paras))
+        except Exception as e:
+            logger.debug("머리글/바닥글 추출 생략: %s", e)
+        return "\n".join(parts)
+
+    def _build_document_structure(self, sections: List[Dict[str, Any]]) -> str:
+        """섹션 목록으로 문서 구조(목차) 문자열 생성. RFP 분석 시 전체 구성을 참조용으로 전달."""
+        if not sections:
+            return ""
+        lines = []
+        for s in sections:
+            title = (s.get("title") or "").strip()
+            if not title:
+                continue
+            level = s.get("level", 1)
+            indent = "  " * (level - 1)
+            lines.append(f"{indent}- {title}")
+        return "\n".join(lines)
 
     def _extract_sections(self, doc: Document) -> List[Dict[str, Any]]:
         """문서 내 Heading 스타일을 기준으로 섹션(title, content, level) 목록 추출."""

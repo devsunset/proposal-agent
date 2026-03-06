@@ -1146,21 +1146,69 @@ def analyze(
 
     result = out[1]
 
+    # 상세 항목 포맷 (핵심 요구사항·평가 기준·산출물)
+    def _fmt_requirements(items, max_display=30):
+        if not items:
+            return "없음"
+        lines = []
+        for i, r in enumerate(items[:max_display]):
+            req = getattr(r, "requirement", None) or getattr(r, "item", str(r))
+            cat = getattr(r, "category", "") or ""
+            pri = getattr(r, "priority", "") or getattr(r, "weight", "")
+            if isinstance(pri, (int, float)):
+                pri = f"배점 {pri}" if pri else ""
+            line = f"  • [{cat}] {req}" + (f" ({pri})" if pri else "")
+            lines.append(line[:120] + ("…" if len(line) > 120 else ""))
+        if len(items) > max_display:
+            lines.append(f"  … 외 {len(items) - max_display}개")
+        return "\n".join(lines) if lines else "없음"
+
+    def _fmt_criteria(items, max_display=30):
+        if not items:
+            return "없음"
+        lines = []
+        for c in items[:max_display]:
+            item = getattr(c, "item", str(c))
+            cat = getattr(c, "category", "") or ""
+            w = getattr(c, "weight", None)
+            w_str = f" 배점 {w}" if w is not None else ""
+            line = f"  • [{cat}] {item}{w_str}"
+            lines.append(line[:120] + ("…" if len(line) > 120 else ""))
+        if len(items) > max_display:
+            lines.append(f"  … 외 {len(items) - max_display}개")
+        return "\n".join(lines) if lines else "없음"
+
+    def _fmt_deliverables(items, max_display=30):
+        if not items:
+            return "없음"
+        lines = []
+        for d in items[:max_display]:
+            name = getattr(d, "name", str(d))
+            phase = getattr(d, "phase", "") or ""
+            desc = (getattr(d, "description", "") or "")[:60]
+            line = f"  • {name}" + (f" ({phase})" if phase else "") + (f" - {desc}…" if desc else "")
+            lines.append(line[:120] + ("…" if len(line) > 120 else ""))
+        if len(items) > max_display:
+            lines.append(f"  … 외 {len(items) - max_display}개")
+        return "\n".join(lines) if lines else "없음"
+
+    req_block = _fmt_requirements(result.key_requirements)
+    crit_block = _fmt_criteria(result.evaluation_criteria)
+    deliv_block = _fmt_deliverables(result.deliverables)
+
+    body = (
+        f"[bold]프로젝트명:[/bold] {result.project_name}\n"
+        f"[bold]발주처:[/bold] {result.client_name}\n"
+        f"[bold]개요:[/bold] {result.project_overview[:200]}...\n\n"
+        f"[bold]핵심 요구사항 ({len(result.key_requirements)}개):[/bold]\n{req_block}\n\n"
+        f"[bold]평가 기준 ({len(result.evaluation_criteria)}개):[/bold]\n{crit_block}\n\n"
+        f"[bold]산출물 ({len(result.deliverables)}개):[/bold]\n{deliv_block}\n\n"
+        f"[bold]수주 전략:[/bold]\n{result.winning_strategy or '분석 필요'}"
+    )
+
     # 결과 출력
     console.print(LOG_SEPARATOR)
-    console.print(
-        Panel(
-            f"[bold]프로젝트명:[/bold] {result.project_name}\n"
-            f"[bold]발주처:[/bold] {result.client_name}\n"
-            f"[bold]개요:[/bold] {result.project_overview[:200]}...\n\n"
-            f"[bold]핵심 요구사항:[/bold] {len(result.key_requirements)}개\n"
-            f"[bold]평가 기준:[/bold] {len(result.evaluation_criteria)}개\n"
-            f"[bold]산출물:[/bold] {len(result.deliverables)}개\n\n"
-            f"[bold]수주 전략:[/bold]\n{result.winning_strategy or '분석 필요'}",
-            title="RFP 분석 결과",
-            border_style="cyan",
-        )
-    )
+    console.print(Panel(body, title="RFP 분석 결과", border_style="cyan"))
 
 
 @app.command()
