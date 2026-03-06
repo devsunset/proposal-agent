@@ -11,6 +11,7 @@ v3.1 추가:
 - Win Theme 배지 지원
 """
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -81,6 +82,22 @@ def _truncate(text: str, max_chars: int, suffix: str = "…") -> str:
     if len(s) <= max_chars:
         return s
     return s[: max_chars - len(suffix)].rstrip() + suffix
+
+
+def _bullet_item_text(item: Any) -> str:
+    """비교/불릿 항목에서 표시용 텍스트만 추출 (repr 방지)."""
+    if item is None:
+        return ""
+    if hasattr(item, "text"):
+        return (getattr(item, "text") or "").strip()
+    if isinstance(item, dict):
+        return (item.get("text") or item.get("left") or item.get("right") or "").strip()
+    s = str(item).strip()
+    if "text=" in s and ("level=" in s or "emphasis=" in s):
+        m = re.search(r"text=['\"]([^'\"]*)['\"]", s)
+        if m:
+            return m.group(1).strip()
+    return s
 
 
 # guide_template.pptx 기준 색상 상수
@@ -461,7 +478,7 @@ class PPTXGenerator:
                         STYLE_COLORS["primary"] if bullet.emphasis
                         else self.template_manager.get_color("text_dark")
                     )
-                    p.space_after = Pt(4)
+                    p.space_after = Pt(10)
             else:
                 # 플레이스홀더 없을 때 텍스트박스 fallback (제목/부제목과 겹치지 않음)
                 body_box = slide.shapes.add_textbox(
@@ -484,7 +501,7 @@ class PPTXGenerator:
                         STYLE_COLORS["primary"] if bullet.emphasis
                         else self.template_manager.get_color("text_dark")
                     )
-                    p.space_after = Pt(4)
+                    p.space_after = Pt(10)
 
         # ── 핵심 메시지 바 (하단 강조, 템플릿에 없는 커스텀 요소) ────
         if key_message:
@@ -886,7 +903,9 @@ class PPTXGenerator:
         title_p.font.color.rgb = self.template_manager.get_color("primary")
         title_p.alignment = PP_ALIGN.CENTER
 
-        if column.get("content"):
+        content_str = (column.get("content") or "").strip()
+        bullets_list = column.get("bullets") or []
+        if content_str:
             content_box = slide.shapes.add_textbox(
                 Inches(content_left),
                 Inches(current_top + 0.6),
@@ -896,13 +915,12 @@ class PPTXGenerator:
             content_tf = content_box.text_frame
             content_tf.word_wrap = True
             content_p = content_tf.paragraphs[0]
-            content_p.text = _truncate(column["content"], 250)
+            content_p.text = _truncate(content_str, 250)
             content_p.font.name = self.template_manager.get_font_name("body")
             content_p.font.size = Pt(11)
             content_p.font.color.rgb = self.template_manager.get_color("text_dark")
 
-        # 불릿 (있는 경우)
-        if column.get("bullets"):
+        if bullets_list:
             bullets_box = slide.shapes.add_textbox(
                 Inches(content_left),
                 Inches(current_top + 0.6),
@@ -912,14 +930,30 @@ class PPTXGenerator:
             bullets_tf = bullets_box.text_frame
             bullets_tf.word_wrap = True
 
-            for j, bullet in enumerate(column["bullets"][:8]):
+            for j, bullet in enumerate(bullets_list[:8]):
                 if j == 0:
                     p = bullets_tf.paragraphs[0]
                 else:
                     p = bullets_tf.add_paragraph()
-                p.text = "• " + _truncate(str(bullet), 120)
+                p.text = "• " + _truncate(_bullet_item_text(bullet), 120)
                 p.font.name = self.template_manager.get_font_name("body")
                 p.font.size = Pt(10)
+                p.space_after = Pt(6)
+        elif not content_str:
+            # 내용 없을 때 빈 박스 방지: 안내 문구
+            content_box = slide.shapes.add_textbox(
+                Inches(content_left),
+                Inches(current_top + 0.6),
+                Inches(content_width),
+                Inches(height - current_top - 0.5),
+            )
+            content_tf = content_box.text_frame
+            content_p = content_tf.paragraphs[0]
+            content_p.text = "—"
+            content_p.font.name = self.template_manager.get_font_name("body")
+            content_p.font.size = Pt(11)
+            content_p.font.color.rgb = self.template_manager.get_color("text_light")
+            content_p.alignment = PP_ALIGN.CENTER
 
     def add_big_number_slide(
         self,
@@ -1231,27 +1265,28 @@ class PPTXGenerator:
         bg.fill.fore_color.rgb = STYLE_COLORS.get(background_color, STYLE_COLORS["dark_bg"])
         bg.line.fill.background()
 
-        # 메인 헤드라인
+        # 메인 헤드라인 (24pt로 제한해 줄바꿈·가독성 확보)
         headline_display = _truncate(headline, 120)
         headline_box = slide.shapes.add_textbox(
-            Inches(MARGIN_H), Inches(1.60),
-            Inches(CONTENT_WIDTH), Inches(1.50),
+            Inches(MARGIN_H), Inches(1.65),
+            Inches(CONTENT_WIDTH), Inches(1.55),
         )
         headline_tf = headline_box.text_frame
         headline_tf.word_wrap = True
         headline_p = headline_tf.paragraphs[0]
         headline_p.text = headline_display
         headline_p.font.name = self.template_manager.get_font_name("title")
-        headline_p.font.size = Pt(30)
+        headline_p.font.size = Pt(24)
         headline_p.font.bold = True
         headline_p.font.color.rgb = STYLE_COLORS["white"]
         headline_p.alignment = PP_ALIGN.CENTER
+        headline_p.line_spacing = 1.2
 
         # 서브 헤드라인
         if subheadline:
             sub_display = _truncate(subheadline, 200)
             sub_box = slide.shapes.add_textbox(
-                Inches(MARGIN_H), Inches(3.20),
+                Inches(MARGIN_H), Inches(3.35),
                 Inches(CONTENT_WIDTH), Inches(0.90),
             )
             sub_tf = sub_box.text_frame
@@ -1317,11 +1352,11 @@ class PPTXGenerator:
         num_p.font.bold = False
         num_p.font.color.rgb = STYLE_COLORS["sky_blue"]
 
-        # 섹션 제목 - 실측: T=2.366" W=3.645" H=1.305" | 30pt Bold 흰색
+        # 섹션 제목 - 24pt로 축소해 줄바꿈 시 부제목과 겹치지 않도록
         title_display = _truncate(phase_title, 55)
         title_box = slide.shapes.add_textbox(
             Inches(PANEL_PAD_LEFT), Inches(2.366),
-            Inches(3.645), Inches(1.305),
+            Inches(3.645), Inches(1.15),
         )
         title_tf = title_box.text_frame
         title_tf.word_wrap = True
@@ -1329,17 +1364,18 @@ class PPTXGenerator:
         title_p = title_tf.paragraphs[0]
         title_p.text = title_display
         title_p.font.name = self.template_manager.get_font_name("title")
-        title_p.font.size = Pt(30)
+        title_p.font.size = Pt(24)
         title_p.font.bold = True
         title_p.font.color.rgb = STYLE_COLORS["white"]
-        title_p.space_after = Pt(0)
+        title_p.space_after = Pt(4)
+        title_p.line_spacing = 1.15
 
-        # 섹션 부제목 (있으면)
+        # 섹션 부제목 (있으면) - 제목과 간격 확보
         if phase_subtitle:
             sub_display = _truncate(phase_subtitle, 90)
             sub_box = slide.shapes.add_textbox(
-                Inches(PANEL_PAD_LEFT), Inches(3.80),
-                Inches(3.645), Inches(0.70),
+                Inches(PANEL_PAD_LEFT), Inches(3.65),
+                Inches(3.645), Inches(0.75),
             )
             sub_tf = sub_box.text_frame
             sub_tf.word_wrap = True
@@ -1401,7 +1437,7 @@ class PPTXGenerator:
         else:
             text_color = STYLE_COLORS["primary"]
 
-        # 핵심 메시지 (guide_template 기준 크기)
+        # 핵심 메시지 (guide_template 기준 크기, 20pt로 과도한 크기 방지)
         msg_display = _truncate(message, 200)
         msg_box = slide.shapes.add_textbox(
             Inches(MARGIN_H), Inches(1.60),
@@ -1412,13 +1448,14 @@ class PPTXGenerator:
         msg_p = msg_tf.paragraphs[0]
         msg_p.text = msg_display
         msg_p.font.name = self.template_manager.get_font_name("title")
-        msg_p.font.size = Pt(24)
+        msg_p.font.size = Pt(20)
         msg_p.font.bold = True
         msg_p.font.color.rgb = text_color
         msg_p.alignment = PP_ALIGN.CENTER
+        msg_p.line_spacing = 1.2
 
-        # 보조 텍스트
-        if supporting_text:
+        # 보조 텍스트 (메시지와 동일하면 중복 표시 생략)
+        if supporting_text and supporting_text.strip() != message.strip():
             sup_display = _truncate(supporting_text, 300)
             sup_box = slide.shapes.add_textbox(
                 Inches(MARGIN_H + 0.30), Inches(3.50),
@@ -1495,7 +1532,7 @@ class PPTXGenerator:
         as_items = list(as_is.get("items", []))[:MAX_BULLETS_PER_SLIDE]
         for i, item in enumerate(as_items):
             p = as_content_tf.paragraphs[0] if i == 0 else as_content_tf.add_paragraph()
-            p.text = "• " + _truncate(str(item), 180)
+            p.text = "• " + _truncate(_bullet_item_text(item), 180)
             p.font.name = self.template_manager.get_font_name("body")
             p.font.size = Pt(12)
             p.font.color.rgb = STYLE_COLORS["text_gray"]
@@ -1540,7 +1577,7 @@ class PPTXGenerator:
         to_items = list(to_be.get("items", []))[:MAX_BULLETS_PER_SLIDE]
         for i, item in enumerate(to_items):
             p = to_content_tf.paragraphs[0] if i == 0 else to_content_tf.add_paragraph()
-            p.text = "• " + _truncate(str(item), 180)
+            p.text = "• " + _truncate(_bullet_item_text(item), 180)
             p.font.name = self.template_manager.get_font_name("body")
             p.font.size = Pt(12)
             p.font.color.rgb = RGBColor(255, 255, 255)

@@ -286,10 +286,20 @@ class PPTXOrchestrator:
             to_be = {"title": "TO-BE (제안)", "items": []}
 
             if slide.comparison:
-                if hasattr(slide.comparison, 'as_is'):
+                if hasattr(slide.comparison, "as_is") and getattr(slide.comparison, "as_is", None) is not None:
                     as_is["items"] = slide.comparison.as_is if isinstance(slide.comparison.as_is, list) else [slide.comparison.as_is]
-                if hasattr(slide.comparison, 'to_be'):
+                if hasattr(slide.comparison, "to_be") and getattr(slide.comparison, "to_be", None) is not None:
                     to_be["items"] = slide.comparison.to_be if isinstance(slide.comparison.to_be, list) else [slide.comparison.to_be]
+                if not as_is["items"] and not to_be["items"] and hasattr(slide.comparison, "items") and slide.comparison.items:
+                    for it in slide.comparison.items:
+                        if getattr(it, "left", None):
+                            as_is["items"].append(it.left)
+                        if getattr(it, "right", None):
+                            to_be["items"].append(it.right)
+                if hasattr(slide.comparison, "left_title"):
+                    as_is["title"] = slide.comparison.left_title or as_is["title"]
+                if hasattr(slide.comparison, "right_title"):
+                    to_be["title"] = slide.comparison.right_title or to_be["title"]
             elif slide.bullets:
                 # bullets를 절반으로 나눠서 as_is/to_be로 처리
                 mid = len(slide.bullets) // 2
