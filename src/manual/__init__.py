@@ -2,6 +2,7 @@
 
 from .manual_orchestrator import (
     ManualOrchestrator,
+    STEP_DESCRIPTIONS,
     _step_request_file_name,
     _step_response_file_name,
     create_run_dir,
@@ -12,6 +13,7 @@ from .browser_automation import LOGIN_SIGNAL_FILENAME, run_automation
 
 __all__ = [
     "ManualOrchestrator",
+    "STEP_DESCRIPTIONS",
     "_step_request_file_name",
     "_step_response_file_name",
     "create_run_dir",

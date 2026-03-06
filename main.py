@@ -916,6 +916,7 @@ def manual_step_auto(
     """
     from src.manual import (
         ManualOrchestrator,
+        STEP_DESCRIPTIONS,
         _step_request_file_name,
         _step_response_file_name,
         create_run_dir,
@@ -981,6 +982,7 @@ def manual_step_auto(
 
     current_step = status["current_step"]
     total_steps = status["total_steps"]
+    phase_desc = STEP_DESCRIPTIONS.get(current_step, "")
     site_label = "Google Gemini" if site_clean == "gemini" else "ChatGPT"
 
     # 영구 프로필 경로(로그인 유지). --no-persistent-profile 이면 None
@@ -996,7 +998,7 @@ def manual_step_auto(
 
     console.print(
         Panel(
-            f"[bold]Step {current_step}/{total_steps}[/bold] - [bold]{site_label}[/bold] 웹에서 자동 실행\n\n"
+            f"[bold]Step {current_step}/{total_steps}[/bold] [dim]| {phase_desc}[/dim] - [bold]{site_label}[/bold] 웹에서 자동 실행\n\n"
             "브라우저가 열리면 [bold]Gemini 또는 ChatGPT에 직접 로그인[/bold]해 주세요.\n"
             "로그인이 완료되면 [bold]이 터미널에서 Enter를 누르면[/bold] 자동으로 프롬프트 전송이 이어집니다.\n\n"
             f"[dim]브라우저: {channel_for_launch or 'chromium'} | 프로필: {profile_dir or '새 세션'}[/dim]",
@@ -1103,6 +1105,7 @@ def manual_run_all(
     """
     from src.manual import (
         ManualOrchestrator,
+        STEP_DESCRIPTIONS,
         _step_request_file_name,
         _step_response_file_name,
         create_run_dir,
@@ -1193,7 +1196,17 @@ def manual_run_all(
         current = status["current_step"]
         if current > total_steps:
             break
-        console.print(Panel(f"[bold]Step {current}/{total_steps}[/bold] - request 전송·응답 수집·저장 후 다음 단계 진행", title="진행", border_style="blue"))
+        phase_desc = STEP_DESCRIPTIONS.get(current, "")
+        console.print(Panel(f"[bold]Step {current}/{total_steps}[/bold] [dim]| {phase_desc}[/dim]\nrequest 전송·응답 수집·저장 후 다음 단계 진행", title="진행", border_style="blue"))
+        if current == 1:
+            console.print(
+                Panel(
+                    "[bold yellow]브라우저가 열리면 로그인한 뒤,[/bold yellow] 이 터미널에서 [bold]Enter[/bold]를 눌러 주세요.\n"
+                    "(로그인 확인 후에만 프롬프트 전송이 진행됩니다.)",
+                    title="로그인 확인",
+                    border_style="yellow",
+                )
+            )
         try:
             run_automation(
                 resolved_dir,
@@ -1227,7 +1240,8 @@ def manual_run_all(
         if done:
             console.print(Panel("[bold green]1~9단계 완료. PPTX가 생성되었습니다.[/bold green]\n\n출력: output/", title="manual-run 완료", border_style="green"))
             return
-        console.print(f"[dim]Step {current} 완료 → 다음: Step {current + 1}[/dim]\n")
+        next_phase = STEP_DESCRIPTIONS.get(current + 1, "")
+        console.print(f"[dim]Step {current} ({phase_desc}) 완료 → 다음: Step {current + 1} | {next_phase}[/dim]\n")
 
 
 @app.command(name="login")

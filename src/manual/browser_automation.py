@@ -1,8 +1,11 @@
 """
-수동 모드 브라우저 자동화: request 파일 내용을 Gemini/ChatGPT 웹에 전송하고 응답을 response 파일에 저장.
+수동 모드 브라우저 자동화: 사람이 하던 '요청 복사 → 붙여넣기 → 응답 복사'만 자동화합니다.
+
+- request 파일 내용을 읽어 → Gemini/ChatGPT 웹 입력란에 붙여넣기 → 전송 → 응답 수신 → response 파일에 저장
+- 1~9단계의 요청/응답 생성·파일 저장·다음 단계 진행 등 나머지 흐름은 기존 manual 오케스트레이션 그대로 사용
 
 사용: python main.py manual-step --site gemini
-     python main.py manual-step --site chatgpt
+     python main.py manual-run --site gemini
 
 실행 전: playwright install chromium
 """
@@ -20,7 +23,7 @@ def _step_log(step: str, message: str, step_label: Optional[str] = None) -> None
     """단계별 진행 상황을 콘솔과 로그에 출력. step_label이 있으면 'Step k/9' 등 단계 정보를 앞에 붙임."""
     prefix = f"[{step_label}] " if step_label else ""
     line = f"  {prefix}{step} {message}"
-    logger.info("%s %s %s", step_label or "", step, message)
+    logger.info("%s", line)
     try:
         print(line, flush=True)
     except Exception:
@@ -97,37 +100,158 @@ def _wait_for_login_signal(signal_path: Path, timeout_sec: int = 300) -> None:
 def _wait_for_login_stdin() -> None:
     """같은 터미널에서 로그인 완료 후 Enter 입력을 기다림."""
     try:
-        input("\n브라우저에서 로그인을 완료한 뒤 이 터미널에서 Enter를 누르세요: ")
+        print("\n" + "=" * 60, flush=True)
+        print("  [로그인 확인] 브라우저에서 로그인을 완료한 뒤, 이 터미널에서 Enter를 누르세요.", flush=True)
+        print("=" * 60, flush=True)
+        input("  Enter를 누르면 계속 진행합니다: ")
     except (EOFError, KeyboardInterrupt):
         raise SystemExit(1)
 
 
-# 질의 입력 후 전송 전 대기(ms). UI가 텍스트를 반영할 시간 확보
-_AFTER_TYPE_DELAY_MS = 2500
+# fill()로 한 번에 넣은 뒤 전송 전 대기(ms). UI가 반영·전송 버튼 활성화 시간
+_AFTER_FILL_DELAY_MS = 1000
 
-# 스트리밍 응답이 끝났다고 보는 기준: 이 간격(초) 동안 응답 길이 변화 없으면 완료
-_RESPONSE_STABLE_INTERVAL_SEC = 2.5
+# 스트리밍 응답 완료 감지: 이 간격(초)마다 길이 체크, 연속 N회 동일하면 완료
+_RESPONSE_STABLE_INTERVAL_SEC = 1.2
 _RESPONSE_STABLE_COUNT = 2  # 연속 N회 길이 동일 시 완료
 _MIN_RESPONSE_LEN = 50
+# 응답 영역 등장 후 최소 대기(ms). 곧바로 길이 폴링 시작
+_RESPONSE_POLL_START_MS = 600
+
+
+def _get_last_response_length(page, selector: str) -> int:
+    """마지막 응답 블록(selector로 매칭)의 텍스트 길이. 없으면 0."""
+    try:
+        return page.evaluate(
+            """(selector) => {
+                const els = document.querySelectorAll(selector);
+                const last = els[els.length - 1];
+                return last ? (last.innerText || '').length : 0;
+            }""",
+            selector,
+        )
+    except Exception:
+        return 0
+
+
+def _find_send_button_gemini(page):
+    """Gemini 전송 버튼을 여러 선택자/방법으로 시도. 찾으면 Locator 반환, 못 찾으면 None."""
+    # 1) getByRole
+    for name in ["Send", "전송", "submit", "Submit", "Send message"]:
+        try:
+            btn = page.get_by_role("button", name=name)
+            btn.wait_for(state="visible", timeout=3000)
+            page.wait_for_timeout(300)
+            return btn
+        except Exception:
+            continue
+    # 2) 단일 선택자씩 시도
+    for selector in [
+        'button[aria-label*="Send"]',
+        'button[aria-label*="전송"]',
+        'button[aria-label*="send"]',
+        'button[data-tooltip*="Send"]',
+        'button[data-tooltip*="전송"]',
+        '[data-icon="send"]',
+        'button:has([data-icon="send"])',
+        '[aria-label="Send"]',
+        'button.send',
+        'button[type="submit"]',
+        'div[role="button"]:has(svg)',
+        'button:has(svg)',
+        'form button[type="submit"]',
+        'button[data-id="send"]',
+        '[class*="send"] button',
+        'button[class*="send"]',
+    ]:
+        try:
+            el = page.locator(selector).first
+            el.wait_for(state="visible", timeout=1500)
+            page.wait_for_timeout(300)
+            return el
+        except Exception:
+            continue
+    return None
+
+
+def _find_send_button_chatgpt(page):
+    """ChatGPT 전송 버튼을 여러 선택자로 시도. 찾으면 Locator 반환, 못 찾으면 None."""
+    # 1) data-testid (ChatGPT 공식)
+    for selector in [
+        'button[data-testid="send-button"]',
+        '[data-testid="send-button"]',
+        'button[aria-label*="Send"]',
+        'button[aria-label*="전송"]',
+        'button[aria-label="Send"]',
+    ]:
+        try:
+            el = page.locator(selector).first
+            el.wait_for(state="visible", timeout=3000)
+            page.wait_for_timeout(300)
+            return el
+        except Exception:
+            continue
+    # 2) getByRole
+    for name in ["Send", "전송", "Submit", "submit"]:
+        try:
+            btn = page.get_by_role("button", name=name)
+            btn.wait_for(state="visible", timeout=2000)
+            page.wait_for_timeout(300)
+            return btn
+        except Exception:
+            continue
+    # 3) 기타
+    for selector in [
+        'button:has(svg[data-icon="send"])',
+        'button:has(svg)',
+        'form button[type="submit"]',
+        '[class*="send"]',
+    ]:
+        try:
+            el = page.locator(selector).first
+            el.wait_for(state="visible", timeout=1500)
+            page.wait_for_timeout(300)
+            return el
+        except Exception:
+            continue
+    return None
 
 
 def _wait_for_response_stable(
-    page, response_selectors: list, timeout_ms: int, min_after_first_ms: int = 3000
+    page,
+    response_selectors: list,
+    timeout_ms: int,
+    min_after_first_ms: Optional[int] = None,
+    last_message_selector: Optional[str] = None,
+    baseline_len: int = 0,
 ) -> None:
-    """응답 영역이 나타난 뒤, 스트리밍이 끝날 때까지 대기(길이 안정)."""
-    page.wait_for_selector(", ".join(response_selectors), timeout=timeout_ms)
-    page.wait_for_timeout(min_after_first_ms)
+    """응답 영역이 보이면 곧바로 폴링해, 새 응답(baseline 초과)이 나온 뒤 길이가 안정될 때까지 대기."""
+    first_sel = response_selectors[0] if response_selectors else ""
+    sel_for_wait = last_message_selector or first_sel
+    page.wait_for_selector(first_sel, timeout=timeout_ms)
+    initial_wait_ms = min_after_first_ms if min_after_first_ms is not None else _RESPONSE_POLL_START_MS
+    page.wait_for_timeout(initial_wait_ms)
+
+    deadline = time.time() + (timeout_ms / 1000.0)
+    # 1) 새 응답이 나올 때까지 짧은 간격으로 폴링 (고정 긴 대기 없음)
+    while time.time() < deadline:
+        try:
+            length = _get_last_response_length(page, sel_for_wait) if sel_for_wait else 0
+        except Exception:
+            length = 0
+        if length > baseline_len and length >= _MIN_RESPONSE_LEN:
+            break
+        time.sleep(0.4)
+    else:
+        return
+
+    # 2) 길이 안정(스트리밍 종료) 체크: 연속 N회 동일하면 완료
     prev_len = -1
     stable = 0
     deadline = time.time() + (timeout_ms / 1000.0)
     while time.time() < deadline:
         try:
-            length = page.evaluate(
-                """() => {
-                const sel = document.querySelector('[data-message-author="model"]') || document.querySelector('article') || document.querySelector('[data-testid="conversation-turn"]');
-                return sel ? sel.innerText.length : 0;
-            }"""
-            )
+            length = _get_last_response_length(page, sel_for_wait) if sel_for_wait else 0
         except Exception:
             length = 0
         if length >= _MIN_RESPONSE_LEN and length == prev_len:
@@ -209,53 +333,46 @@ def _run_gemini_flow(
             input_selector = 'textarea[placeholder*="물어보기"], textarea[placeholder*="Gemini"], [contenteditable="true"][aria-label*="입력"], [role="textbox"]'
             input_el = page.wait_for_selector(input_selector, timeout=15_000)
             input_el.click()
-            input_el.fill("")
-            _step_log("(5/9)", f"프롬프트 입력 중 ({len(combined)}자)...", step_label=step_label)
-            page.keyboard.type(combined, delay=10)
-            _step_log("(6/9)", f"전송 전 대기 ({_AFTER_TYPE_DELAY_MS}ms)...", step_label=step_label)
-            page.wait_for_timeout(_AFTER_TYPE_DELAY_MS)
+            _step_log("(5/9)", f"프롬프트 한 번에 입력 중 ({len(combined)}자)...", step_label=step_label)
+            input_el.fill(combined)
+            _step_log("(6/9)", f"전송 전 대기 ({_AFTER_FILL_DELAY_MS}ms)...", step_label=step_label)
+            page.wait_for_timeout(_AFTER_FILL_DELAY_MS)
 
-            _step_log("(7/9)", "전송 버튼 클릭.", step_label=step_label)
-            send_btn = page.wait_for_selector(
-                'button[aria-label*="전송"], button[aria-label*="Send"], button[data-tooltip*="전송"], [data-icon="send"], button:has(svg)',
-                timeout=5_000,
-            )
-            send_btn.click()
+            gemini_last_sel = '[data-message-author="model"]'
+            baseline_len = _get_last_response_length(page, gemini_last_sel)
+            _step_log("(7/9)", "전송 버튼 찾는 중...", step_label=step_label)
+            send_btn = _find_send_button_gemini(page)
+            if send_btn:
+                send_btn.click()
+            else:
+                _step_log("(7/9)", "전송 버튼 대신 Enter 키로 전송 시도...", step_label=step_label)
+                input_el.click()
+                page.wait_for_timeout(300)
+                page.keyboard.press("Enter")
 
             _step_log("(8/9)", "응답 수신 대기 중 (스트리밍 완료까지)...", step_label=step_label)
             _wait_for_response_stable(
                 page,
                 ['[data-message-author="model"]', '[class*="model"]', '[class*="response"]', "article"],
                 timeout_ms,
+                last_message_selector=gemini_last_sel,
+                baseline_len=baseline_len,
             )
 
-            # 응답 텍스트 수집 (가능한 선택자 여러 개 시도)
-            response_text = ""
-            for sel in [
-                '[data-message-author="model"]',
-                '[class*="markdown"]',
-                'article',
-                '[class*="response"] div',
-            ]:
-                els = page.query_selector_all(sel)
-                if els:
-                    for el in reversed(els):
-                        t = el.inner_text().strip()
-                        if len(t) > len(response_text) and len(t) > 50:
-                            response_text = t
-                            break
-                if response_text:
-                    break
-
-            if not response_text:
-                response_text = page.evaluate(
-                    """() => {
-                    const sel = document.querySelector('[data-message-author="model"]') || document.querySelector('article');
-                    return sel ? sel.innerText : document.body.innerText;
+            # 응답 텍스트 수집: 마지막 model 메시지만 사용(이전 대화와 구분)
+            response_text = page.evaluate(
+                """() => {
+                    const els = document.querySelectorAll('[data-message-author="model"]');
+                    const last = els[els.length - 1];
+                    if (last) return (last.innerText || '').trim();
+                    const art = document.querySelector('article');
+                    return art ? art.innerText.trim() : '';
                 }"""
-                )
+            )
+            if not (response_text and len(response_text) >= _MIN_RESPONSE_LEN):
+                response_text = page.evaluate("() => document.body.innerText || ''").strip()
 
-            response_path.write_text(response_text.strip(), encoding="utf-8")
+            response_path.write_text((response_text or "").strip(), encoding="utf-8")
             _step_log("(9/9)", f"응답 수집·저장 완료: {len(response_text)}자 → {response_path}", step_label=step_label)
             logger.info("Gemini 응답 저장: {} ({}자)", response_path, len(response_text))
 
@@ -333,53 +450,64 @@ def _run_chatgpt_flow(
                 _step_log("(3/9)", "로그인 대기 생략 (wait_for_login=False).", step_label=step_label)
 
             _step_log("(4/9)", "프롬프트 입력란 찾는 중...", step_label=step_label)
-            input_selector = 'textarea[placeholder*="Message"], textarea[placeholder*="메시지"], #prompt-textarea, [contenteditable="true"]'
-            input_el = page.wait_for_selector(input_selector, timeout=15_000)
+            input_el = None
+            for input_selector in [
+                "#prompt-textarea",
+                'textarea[data-id="root"]',
+                'textarea[placeholder*="Message"]',
+                'textarea[placeholder*="메시지"]',
+                'textarea[placeholder*="message"]',
+                '[contenteditable="true"][data-id="root"]',
+                'form textarea',
+            ]:
+                try:
+                    input_el = page.locator(input_selector).first
+                    input_el.wait_for(state="visible", timeout=3000)
+                    break
+                except Exception:
+                    continue
+            if input_el is None:
+                raise RuntimeError("ChatGPT 입력란을 찾지 못했습니다. 웹 UI가 변경되었을 수 있습니다.")
             input_el.click()
-            input_el.fill("")
-            _step_log("(5/9)", f"프롬프트 입력 중 ({len(combined)}자)...", step_label=step_label)
-            page.keyboard.type(combined, delay=10)
-            _step_log("(6/9)", f"전송 전 대기 ({_AFTER_TYPE_DELAY_MS}ms)...", step_label=step_label)
-            page.wait_for_timeout(_AFTER_TYPE_DELAY_MS)
+            _step_log("(5/9)", f"프롬프트 한 번에 입력 중 ({len(combined)}자)...", step_label=step_label)
+            input_el.fill(combined)
+            _step_log("(6/9)", f"전송 전 대기 ({_AFTER_FILL_DELAY_MS}ms)...", step_label=step_label)
+            page.wait_for_timeout(_AFTER_FILL_DELAY_MS)
 
-            _step_log("(7/9)", "전송 버튼 클릭.", step_label=step_label)
-            send_btn = page.wait_for_selector(
-                'button[data-testid="send-button"], button[aria-label*="Send"], button:has(svg[data-icon="send"])',
-                timeout=5_000,
-            )
-            send_btn.click()
+            chatgpt_last_sel = '[data-testid="conversation-turn"]'
+            baseline_len = _get_last_response_length(page, chatgpt_last_sel)
+            _step_log("(7/9)", "전송 버튼 찾는 중...", step_label=step_label)
+            send_btn = _find_send_button_chatgpt(page)
+            if send_btn:
+                send_btn.click()
+            else:
+                _step_log("(7/9)", "전송 버튼 대신 Enter 키로 전송 시도...", step_label=step_label)
+                input_el.click()
+                page.wait_for_timeout(300)
+                page.keyboard.press("Enter")
 
             _step_log("(8/9)", "응답 수신 대기 중 (스트리밍 완료까지)...", step_label=step_label)
             _wait_for_response_stable(
                 page,
                 ['[data-testid="conversation-turn"]', '[class*="result"]', '[class*="response"]'],
                 timeout_ms,
+                last_message_selector=chatgpt_last_sel,
+                baseline_len=baseline_len,
             )
 
-            response_text = ""
-            for sel in [
-                '[data-testid="conversation-turn"]:last-of-type',
-                '[class*="markdown"]',
-                '[class*="result"]',
-            ]:
-                el = page.query_selector(sel)
-                if el:
-                    t = el.inner_text().strip()
-                    if len(t) > len(response_text) and len(t) > 50:
-                        response_text = t
-                if response_text:
-                    break
-
-            if not response_text:
-                response_text = page.evaluate(
-                    """() => {
+            # 마지막 assistant 턴만 사용(이전 대화와 구분)
+            response_text = page.evaluate(
+                """() => {
                     const turns = document.querySelectorAll('[data-testid="conversation-turn"]');
                     const last = turns[turns.length - 1];
-                    return last ? last.innerText : document.body.innerText;
+                    if (last) return (last.innerText || '').trim();
+                    return '';
                 }"""
-                )
+            )
+            if not (response_text and len(response_text) >= _MIN_RESPONSE_LEN):
+                response_text = page.evaluate("() => document.body.innerText || ''").strip()
 
-            response_path.write_text(response_text.strip(), encoding="utf-8")
+            response_path.write_text((response_text or "").strip(), encoding="utf-8")
             _step_log("(9/9)", f"응답 수집·저장 완료: {len(response_text)}자 → {response_path}", step_label=step_label)
             logger.info("ChatGPT 응답 저장: {} ({}자)", response_path, len(response_text))
 
@@ -405,7 +533,7 @@ def run_automation(
     step_label: Optional[str] = None,
 ) -> Path:
     """
-    현재 단계 request 파일을 읽어 Gemini 또는 ChatGPT 웹에 전송하고, 응답을 response 파일에 저장.
+    사람이 하던 '요청 복사·붙여넣기·응답 복사'만 자동화: request 파일 → 웹에 붙여넣기·전송 → 응답을 response 파일에 저장.
 
     Args:
         run_dir: 수동 모드 run 폴더 (manual_req_res/run_YYYYMMDD_HHMMSS)
@@ -419,7 +547,11 @@ def run_automation(
     Returns:
         저장된 response 파일 경로
     """
-    from .manual_orchestrator import _step_request_file_name, _step_response_file_name
+    from .manual_orchestrator import (
+        STEP_DESCRIPTIONS,
+        _step_request_file_name,
+        _step_response_file_name,
+    )
 
     run_dir = Path(run_dir)
     request_path = run_dir / _step_request_file_name(step)
@@ -428,8 +560,12 @@ def run_automation(
     if not request_path.exists():
         raise FileNotFoundError(f"요청 파일이 없습니다: {request_path}")
 
-    if step_label:
-        _step_log("준비", f"request 파일 로드 완료 → 브라우저 자동화 시작 ({site})", step_label=step_label)
+    # Step + Phase 단계별 로그용 라벨 (예: "Step 1/9 | RFP 분석", "Step 2/9 | Phase 0: HOOK (티저)")
+    phase_desc = STEP_DESCRIPTIONS.get(step, "")
+    effective_step_label = f"{step_label} | {phase_desc}" if (step_label and phase_desc) else step_label
+
+    if effective_step_label:
+        _step_log("준비", f"request 파일 로드 완료 → 브라우저 자동화 시작 ({site})", step_label=effective_step_label)
     system_prompt, user_message = parse_request_file(request_path)
     timeout_ms = timeout_sec * 1000
 
@@ -451,7 +587,7 @@ def run_automation(
             login_via_stdin=login_via_stdin,
             browser_channel=browser_channel,
             user_data_dir=user_data_dir,
-            step_label=step_label,
+            step_label=effective_step_label,
         )
     elif site_lower == "chatgpt":
         _run_chatgpt_flow(
@@ -464,7 +600,7 @@ def run_automation(
             login_via_stdin=login_via_stdin,
             browser_channel=browser_channel,
             user_data_dir=user_data_dir,
-            step_label=step_label,
+            step_label=effective_step_label,
         )
     else:
         raise ValueError(f"지원하지 않는 사이트입니다: {site}. gemini 또는 chatgpt 를 지정하세요.")
