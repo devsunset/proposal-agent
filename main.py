@@ -830,7 +830,7 @@ def status(
 def manual_run_all(
     rfp_path: Optional[Path] = typer.Argument(
         None,
-        help="RFP 파일 경로. 지정 시 해당 run 사용(없으면 새 run 생성). 생략 시 최신 run 사용.",
+        help="RFP 파일 경로. 지정 시 항상 새 run 생성(재실행). 생략 시 최신 run 사용.",
         file_okay=True,
         dir_okay=False,
     ),
@@ -896,7 +896,6 @@ def manual_run_all(
         _step_request_file_name,
         _step_response_file_name,
         create_run_dir,
-        find_run_by_rfp_path,
         launch_manual_browser,
         resolve_manual_run_dir,
         run_automation,
@@ -912,40 +911,23 @@ def manual_run_all(
         if not rfp_path.exists():
             console.print(Panel(f"[red]RFP 파일이 없습니다:[/red]\n{rfp_path}", title="오류", border_style="red"))
             raise typer.Exit(1)
-        run_dir = find_run_by_rfp_path(rfp_path, base_dir=manual_dir)
-        if run_dir is None:
-            run_dir = create_run_dir(manual_dir)
-            company_data_resolved = company_data.resolve()
-            orch = ManualOrchestrator(manual_dir=run_dir)
-            try:
-                orch.start(
-                    rfp_path=rfp_path,
-                    project_name=project_name or "",
-                    client_name=client_name or "",
-                    proposal_type=None,
-                    company_data_path=company_data_resolved if company_data_resolved.exists() else None,
-                    output_dir=output_dir,
-                )
-            except Exception as e:
-                console.print(f"[red]run 생성 실패: {e}[/red]")
-                raise typer.Exit(1)
-            console.print(f"[dim]RFP 기준 새 run 생성: {run_dir}[/dim]")
-        else:
-            # 기존 run 사용 시에도 -n/-c 를 주었으면 state에 반영 (PPTX 파일명·제안서 제목에 사용)
-            if (project_name and str(project_name).strip()) or (client_name and str(client_name).strip()):
-                _orch = ManualOrchestrator(manual_dir=run_dir)
-                if _orch.state_file.exists():
-                    _state = _orch._load_state()
-                    updated = False
-                    if project_name and str(project_name).strip():
-                        _state["project_name"] = str(project_name).strip()
-                        updated = True
-                    if client_name and str(client_name).strip():
-                        _state["client_name"] = str(client_name).strip()
-                        updated = True
-                    if updated:
-                        _orch._save_state(_state)
-                        console.print(f"[dim]지정한 프로젝트명/발주처 반영: -n {project_name or '(유지)'} -c {client_name or '(유지)'}[/dim]")
+        # RFP 경로를 지정하면 항상 새 run 생성(재실행)
+        run_dir = create_run_dir(manual_dir)
+        company_data_resolved = company_data.resolve()
+        orch = ManualOrchestrator(manual_dir=run_dir)
+        try:
+            orch.start(
+                rfp_path=rfp_path,
+                project_name=project_name or "",
+                client_name=client_name or "",
+                proposal_type=None,
+                company_data_path=company_data_resolved if company_data_resolved.exists() else None,
+                output_dir=output_dir,
+            )
+        except Exception as e:
+            console.print(f"[red]run 생성 실패: {e}[/red]")
+            raise typer.Exit(1)
+        console.print(f"[dim]RFP 기준 새 run 생성: {run_dir}[/dim]")
         resolved_dir = run_dir
     else:
         resolved_dir = resolve_manual_run_dir(manual_dir)

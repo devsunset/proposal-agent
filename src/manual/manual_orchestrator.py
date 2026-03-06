@@ -279,9 +279,89 @@ class ManualOrchestrator:
         self._save_state(state)
         return False
 
+    def _normalize_rfp_response(self, data: Dict) -> Dict:
+        """LLM 응답이 다른 구조(project_info, evaluation_criteria 객체 등)여도 RFPAnalysis 형식으로 정규화."""
+        out = dict(data)
+
+        # project_info 중첩 구조 → 최상위 필드로
+        pi = out.get("project_info") or {}
+        if isinstance(pi, dict):
+            if not out.get("project_name") and pi.get("project_name"):
+                out["project_name"] = pi["project_name"]
+            if not out.get("client_name") and (pi.get("client") or pi.get("client_name")):
+                out["client_name"] = pi.get("client") or pi.get("client_name")
+            if not out.get("project_overview") and pi.get("project_overview"):
+                out["project_overview"] = pi["project_overview"]
+
+        # evaluation_criteria: 객체 → 리스트 (RFPAnalysis는 List[EvaluationCriterion] 기대)
+        ec = out.get("evaluation_criteria")
+        if ec is not None and not isinstance(ec, list):
+            if isinstance(ec, dict):
+                items = ec.get("key_evaluation_factors") or ec.get("items") or ec.get("evaluation_items")
+                if isinstance(items, list):
+                    out["evaluation_criteria"] = [
+                        {"category": "평가", "item": (x if isinstance(x, str) else x.get("item", str(x))), "weight": x.get("weight") if isinstance(x, dict) else None}
+                        for x in items
+                    ]
+                else:
+                    out["evaluation_criteria"] = []
+            else:
+                out["evaluation_criteria"] = []
+        if out.get("evaluation_criteria") is None:
+            out["evaluation_criteria"] = []
+
+        # key_requirements: 없거나 리스트가 아니면 requirements_analysis에서 구성
+        kr = out.get("key_requirements")
+        if not isinstance(kr, list):
+            req_analysis = out.get("requirements_analysis") or {}
+            key_reqs = []
+            for key, label in [
+                ("functional_requirements", "기능"),
+                ("management_requirements", "관리"),
+                ("technical_requirements", "기술"),
+            ]:
+                arr = req_analysis.get(key) if isinstance(req_analysis, dict) else None
+                if isinstance(arr, list):
+                    for x in arr:
+                        key_reqs.append({"category": label, "requirement": x if isinstance(x, str) else str(x), "priority": "필수"})
+                elif isinstance(arr, dict):
+                    for k, v in arr.items():
+                        key_reqs.append({"category": label, "requirement": f"{k}: {v}" if isinstance(v, str) else str(v), "priority": "필수"})
+            if key_reqs:
+                out["key_requirements"] = key_reqs
+            else:
+                out["key_requirements"] = []
+        if out.get("key_requirements") is None:
+            out["key_requirements"] = []
+
+        # technical_requirements, functional_requirements: 리스트가 아니면 빈 리스트
+        if not isinstance(out.get("technical_requirements"), list):
+            out["technical_requirements"] = []
+        if not isinstance(out.get("functional_requirements"), list):
+            out["functional_requirements"] = []
+
+        # deliverables: 리스트가 아니면 빈 리스트
+        if not isinstance(out.get("deliverables"), list):
+            out["deliverables"] = []
+
+        # strategic_analysis → 최상위 필드
+        sa = out.get("strategic_analysis") or {}
+        if isinstance(sa, dict):
+            if not out.get("key_success_factors") and sa.get("core_success_factors"):
+                out["key_success_factors"] = sa["core_success_factors"] if isinstance(sa["core_success_factors"], list) else []
+            if not out.get("potential_risks") and sa.get("potential_risks"):
+                out["potential_risks"] = sa["potential_risks"] if isinstance(sa["potential_risks"], list) else []
+            if not out.get("differentiation_points") and sa.get("differentiation_points"):
+                out["differentiation_points"] = sa["differentiation_points"] if isinstance(sa["differentiation_points"], list) else []
+            if not out.get("winning_strategy") and sa.get("winning_strategy"):
+                out["winning_strategy"] = sa["winning_strategy"]
+
+        return out
+
     def _process_step1(self, json_data: Dict, state: Dict) -> None:
         """Step 1: RFP 분석 응답 처리 → Step 2 요청 파일 생성"""
         json_data = self._normalize_keys(json_data, RFP_KEY_ALIASES)
+        json_data = self._normalize_rfp_response(json_data)
         json_data.setdefault("project_name", state.get("project_name") or "프로젝트명 미확인")
         json_data.setdefault("client_name", state.get("client_name") or "발주처 미확인")
         json_data.setdefault("project_overview", "")
