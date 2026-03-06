@@ -11,6 +11,7 @@
 """
 
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -20,10 +21,10 @@ logger = get_logger("browser_automation")
 
 
 def _step_log(step: str, message: str, step_label: Optional[str] = None) -> None:
-    """단계별 진행 상황을 콘솔과 로그에 출력. step_label이 있으면 'Step k/9' 등 단계 정보를 앞에 붙임."""
+    """단계별 진행 상황을 한 줄만 출력 (시간 포함). step_label이 있으면 'Step k/9' 등 단계 정보를 앞에 붙임."""
+    ts = datetime.now().strftime("%H:%M:%S")
     prefix = f"[{step_label}] " if step_label else ""
-    line = f"  {prefix}{step} {message}"
-    logger.info("%s", line)
+    line = f"{ts}  {prefix}{step} {message}"
     try:
         print(line, flush=True)
     except Exception:
@@ -100,8 +101,9 @@ def _wait_for_login_signal(signal_path: Path, timeout_sec: int = 300) -> None:
 def _wait_for_login_stdin() -> None:
     """같은 터미널에서 로그인 완료 후 Enter 입력을 기다림."""
     try:
+        ts = datetime.now().strftime("%H:%M:%S")
         print("\n" + "=" * 60, flush=True)
-        print("  [로그인 확인] 브라우저에서 로그인을 완료한 뒤, 이 터미널에서 Enter를 누르세요.", flush=True)
+        print(f"{ts}  [로그인 확인] 브라우저에서 로그인을 완료한 뒤, 이 터미널에서 Enter를 누르세요.", flush=True)
         print("=" * 60, flush=True)
         input("  Enter를 누르면 계속 진행합니다: ")
     except (EOFError, KeyboardInterrupt):
@@ -112,11 +114,15 @@ def _wait_for_login_stdin() -> None:
 _AFTER_FILL_DELAY_MS = 1000
 
 # 스트리밍 응답 완료 감지: 이 간격(초)마다 길이 체크, 연속 N회 동일하면 완료
-_RESPONSE_STABLE_INTERVAL_SEC = 1.2
-_RESPONSE_STABLE_COUNT = 2  # 연속 N회 길이 동일 시 완료
+_RESPONSE_STABLE_INTERVAL_SEC = 0.5
+_RESPONSE_STABLE_COUNT = 2  # 연속 2회 길이 동일 시 완료 (0.5s×2 = 1초)
 _MIN_RESPONSE_LEN = 50
 # 응답 영역 등장 후 최소 대기(ms). 곧바로 길이 폴링 시작
-_RESPONSE_POLL_START_MS = 600
+_RESPONSE_POLL_START_MS = 300
+# 진행 로그 출력 간격(초). 응답 대기 중 "N자 수신, 완료 대기" 출력
+_RESPONSE_PROGRESS_LOG_INTERVAL_SEC = 5
+# 새 응답 대기 최대 시간(초). 이후에도 감지 안 되면 길이만으로 진행 시도
+_RESPONSE_NEW_WAIT_MAX_SEC = 10
 
 
 def _get_last_response_length(page, selector: str) -> int:
@@ -134,40 +140,66 @@ def _get_last_response_length(page, selector: str) -> int:
         return 0
 
 
+def _get_last_response_length_multi(page, selectors: list) -> int:
+    """여러 선택자로 마지막 응답 블록 길이 시도, 최대값 반환 (Gemini/ChatGPT UI 차이 대응)."""
+    out = 0
+    for sel in selectors:
+        try:
+            n = page.evaluate(
+                """(selector) => {
+                    const els = document.querySelectorAll(selector);
+                    const last = els[els.length - 1];
+                    return last ? (last.innerText || '').length : 0;
+                }""",
+                sel,
+            )
+            if n > out:
+                out = n
+        except Exception:
+            continue
+    return out
+
+
+def _get_response_block_count(page, selector: str) -> int:
+    """응답 블록(selector) 개수. 새 턴이 추가됐는지 판단할 때 사용."""
+    try:
+        return page.evaluate(
+            """(selector) => document.querySelectorAll(selector).length""",
+            selector,
+        )
+    except Exception:
+        return 0
+
+
+# 전송 버튼 찾기: 시도당 타임아웃(ms). 짧게 해서 빠르게 시도 후 Enter 폴백
+_SEND_BUTTON_TRY_MS = 600
+_SEND_BUTTON_WAIT_AFTER_MS = 80
+
+
 def _find_send_button_gemini(page):
-    """Gemini 전송 버튼을 여러 선택자/방법으로 시도. 찾으면 Locator 반환, 못 찾으면 None."""
-    # 1) getByRole
-    for name in ["Send", "전송", "submit", "Submit", "Send message"]:
+    """Gemini 전송 버튼을 여러 선택자로 빠르게 시도. 찾으면 Locator 반환, 못 찾으면 None(Enter 폴백)."""
+    # 1) getByRole (가장 흔한 케이스)
+    for name in ["Send", "전송", "Send message", "submit", "Submit"]:
         try:
             btn = page.get_by_role("button", name=name)
-            btn.wait_for(state="visible", timeout=3000)
-            page.wait_for_timeout(300)
+            btn.wait_for(state="visible", timeout=_SEND_BUTTON_TRY_MS)
+            page.wait_for_timeout(_SEND_BUTTON_WAIT_AFTER_MS)
             return btn
         except Exception:
             continue
-    # 2) 단일 선택자씩 시도
+    # 2) 단일 선택자 (타임아웃 짧게)
     for selector in [
         'button[aria-label*="Send"]',
         'button[aria-label*="전송"]',
-        'button[aria-label*="send"]',
-        'button[data-tooltip*="Send"]',
-        'button[data-tooltip*="전송"]',
         '[data-icon="send"]',
         'button:has([data-icon="send"])',
-        '[aria-label="Send"]',
-        'button.send',
         'button[type="submit"]',
-        'div[role="button"]:has(svg)',
         'button:has(svg)',
-        'form button[type="submit"]',
-        'button[data-id="send"]',
-        '[class*="send"] button',
-        'button[class*="send"]',
     ]:
         try:
             el = page.locator(selector).first
-            el.wait_for(state="visible", timeout=1500)
-            page.wait_for_timeout(300)
+            el.wait_for(state="visible", timeout=_SEND_BUTTON_TRY_MS)
+            page.wait_for_timeout(_SEND_BUTTON_WAIT_AFTER_MS)
             return el
         except Exception:
             continue
@@ -175,19 +207,18 @@ def _find_send_button_gemini(page):
 
 
 def _find_send_button_chatgpt(page):
-    """ChatGPT 전송 버튼을 여러 선택자로 시도. 찾으면 Locator 반환, 못 찾으면 None."""
-    # 1) data-testid (ChatGPT 공식)
+    """ChatGPT 전송 버튼을 여러 선택자로 빠르게 시도. 찾으면 Locator 반환, 못 찾으면 None(Enter 폴백)."""
+    # 1) data-testid (ChatGPT 공식, 가장 먼저)
     for selector in [
         'button[data-testid="send-button"]',
         '[data-testid="send-button"]',
         'button[aria-label*="Send"]',
-        'button[aria-label*="전송"]',
         'button[aria-label="Send"]',
     ]:
         try:
             el = page.locator(selector).first
-            el.wait_for(state="visible", timeout=3000)
-            page.wait_for_timeout(300)
+            el.wait_for(state="visible", timeout=_SEND_BUTTON_TRY_MS)
+            page.wait_for_timeout(_SEND_BUTTON_WAIT_AFTER_MS)
             return el
         except Exception:
             continue
@@ -195,22 +226,17 @@ def _find_send_button_chatgpt(page):
     for name in ["Send", "전송", "Submit", "submit"]:
         try:
             btn = page.get_by_role("button", name=name)
-            btn.wait_for(state="visible", timeout=2000)
-            page.wait_for_timeout(300)
+            btn.wait_for(state="visible", timeout=_SEND_BUTTON_TRY_MS)
+            page.wait_for_timeout(_SEND_BUTTON_WAIT_AFTER_MS)
             return btn
         except Exception:
             continue
     # 3) 기타
-    for selector in [
-        'button:has(svg[data-icon="send"])',
-        'button:has(svg)',
-        'form button[type="submit"]',
-        '[class*="send"]',
-    ]:
+    for selector in ['button:has(svg)', 'form button[type="submit"]']:
         try:
             el = page.locator(selector).first
-            el.wait_for(state="visible", timeout=1500)
-            page.wait_for_timeout(300)
+            el.wait_for(state="visible", timeout=_SEND_BUTTON_TRY_MS)
+            page.wait_for_timeout(_SEND_BUTTON_WAIT_AFTER_MS)
             return el
         except Exception:
             continue
@@ -224,22 +250,48 @@ def _wait_for_response_stable(
     min_after_first_ms: Optional[int] = None,
     last_message_selector: Optional[str] = None,
     baseline_len: int = 0,
+    baseline_count: int = 0,
 ) -> None:
-    """응답 영역이 보이면 곧바로 폴링해, 새 응답(baseline 초과)이 나온 뒤 길이가 안정될 때까지 대기."""
+    """응답 영역이 보이면 폴링해, 새 응답이 나온 뒤 길이가 안정되면 완료로 간주하고 다음 단계 진행."""
     first_sel = response_selectors[0] if response_selectors else ""
     sel_for_wait = last_message_selector or first_sel
+    length_selectors = [s for s in [sel_for_wait, first_sel] + response_selectors if s]
+    length_selectors = list(dict.fromkeys(length_selectors))
+
+    def _current_length() -> int:
+        return _get_last_response_length_multi(page, length_selectors) if len(length_selectors) > 1 else (
+            _get_last_response_length(page, sel_for_wait) if sel_for_wait else 0
+        )
+
+    def _current_count() -> int:
+        return _get_response_block_count(page, sel_for_wait) if sel_for_wait else 0
+
     page.wait_for_selector(first_sel, timeout=timeout_ms)
     initial_wait_ms = min_after_first_ms if min_after_first_ms is not None else _RESPONSE_POLL_START_MS
     page.wait_for_timeout(initial_wait_ms)
 
     deadline = time.time() + (timeout_ms / 1000.0)
-    # 1) 새 응답이 나올 때까지 짧은 간격으로 폴링 (고정 긴 대기 없음)
+    new_response_deadline = time.time() + _RESPONSE_NEW_WAIT_MAX_SEC
+    last_progress_log = 0.0
+    # 1) 새 응답이 나올 때까지 폴링 (블록 개수 증가 또는 길이 증가로 감지, 최대 _RESPONSE_NEW_WAIT_MAX_SEC)
     while time.time() < deadline:
-        try:
-            length = _get_last_response_length(page, sel_for_wait) if sel_for_wait else 0
-        except Exception:
-            length = 0
+        length = _current_length()
+        count = _current_count()
+        now = time.time()
+        if now - last_progress_log >= _RESPONSE_PROGRESS_LOG_INTERVAL_SEC:
+            try:
+                ts = datetime.now().strftime("%H:%M:%S")
+                print(f"{ts}  [응답 대기] {length}자 (블록 {count}개), 새 응답 감지 대기 중...", flush=True)
+            except Exception:
+                pass
+            last_progress_log = now
+        # 새 응답 도착: 길이 증가 또는 블록 개수 증가
         if length > baseline_len and length >= _MIN_RESPONSE_LEN:
+            break
+        if baseline_count >= 0 and count > baseline_count and length >= 10:
+            break
+        # 최대 대기 초과 시 내용만 있으면 진행 (DOM 구조 차이 대비)
+        if now >= new_response_deadline and length >= _MIN_RESPONSE_LEN:
             break
         time.sleep(0.4)
     else:
@@ -250,10 +302,15 @@ def _wait_for_response_stable(
     stable = 0
     deadline = time.time() + (timeout_ms / 1000.0)
     while time.time() < deadline:
-        try:
-            length = _get_last_response_length(page, sel_for_wait) if sel_for_wait else 0
-        except Exception:
-            length = 0
+        length = _current_length()
+        now = time.time()
+        if now - last_progress_log >= _RESPONSE_PROGRESS_LOG_INTERVAL_SEC:
+            try:
+                ts = datetime.now().strftime("%H:%M:%S")
+                print(f"{ts}  [응답 대기] {length}자 수신 중, 스트리밍 완료 시 자동 진행...", flush=True)
+            except Exception:
+                pass
+            last_progress_log = now
         if length >= _MIN_RESPONSE_LEN and length == prev_len:
             stable += 1
             if stable >= _RESPONSE_STABLE_COUNT:
@@ -339,7 +396,10 @@ def _run_gemini_flow(
             page.wait_for_timeout(_AFTER_FILL_DELAY_MS)
 
             gemini_last_sel = '[data-message-author="model"]'
-            baseline_len = _get_last_response_length(page, gemini_last_sel)
+            baseline_len = _get_last_response_length_multi(
+                page, ['[data-message-author="model"]', "article", '[class*="model"]', '[class*="response"]']
+            )
+            baseline_count = _get_response_block_count(page, gemini_last_sel)
             _step_log("(7/9)", "전송 버튼 찾는 중...", step_label=step_label)
             send_btn = _find_send_button_gemini(page)
             if send_btn:
@@ -357,6 +417,7 @@ def _run_gemini_flow(
                 timeout_ms,
                 last_message_selector=gemini_last_sel,
                 baseline_len=baseline_len,
+                baseline_count=baseline_count,
             )
 
             # 응답 텍스트 수집: 마지막 model 메시지만 사용(이전 대화와 구분)
@@ -476,6 +537,7 @@ def _run_chatgpt_flow(
 
             chatgpt_last_sel = '[data-testid="conversation-turn"]'
             baseline_len = _get_last_response_length(page, chatgpt_last_sel)
+            baseline_count = _get_response_block_count(page, chatgpt_last_sel)
             _step_log("(7/9)", "전송 버튼 찾는 중...", step_label=step_label)
             send_btn = _find_send_button_chatgpt(page)
             if send_btn:
@@ -493,6 +555,7 @@ def _run_chatgpt_flow(
                 timeout_ms,
                 last_message_selector=chatgpt_last_sel,
                 baseline_len=baseline_len,
+                baseline_count=baseline_count,
             )
 
             # 마지막 assistant 턴만 사용(이전 대화와 구분)
