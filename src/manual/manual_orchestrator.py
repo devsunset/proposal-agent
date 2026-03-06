@@ -193,7 +193,6 @@ class ManualOrchestrator:
         proposal_type: Optional[str] = None,
         company_data_path: Optional[Path] = None,
         output_dir: Path = Path("output"),
-        template: Optional[str] = None,
     ) -> None:
         """수동 모드 시작. RFP 파싱 후 Step 1 요청 파일 생성."""
         logger.info("수동 모드 시작: {}", rfp_path)
@@ -219,7 +218,6 @@ class ManualOrchestrator:
             "company_data_path": str(company_data_path) if company_data_path else "",
             "company_data": company_data,
             "output_dir": str(output_dir),
-            "template": template,
             "current_step": 1,
             "total_steps": TOTAL_STEPS,
             "rfp_analysis": None,
@@ -615,12 +613,11 @@ Step {step}/{TOTAL_STEPS}: {description}
             suffix=f"_{_ts}",
             extension=".pptx",
         )
-        template = state.get("template")
         pptx_orchestrator = PPTXOrchestrator()
         pptx_orchestrator.execute(
             content=content,
             output_path=output_path,
-            template_name=template or "",
+            template_name="",
         )
         state["pptx_output_path"] = str(output_path.resolve())
         self._save_state(state)
